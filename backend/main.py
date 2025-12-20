@@ -1,4 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from . import models, database
+import os
+
+load_dotenv()
+
+models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
 
