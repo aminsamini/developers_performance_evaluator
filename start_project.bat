@@ -12,10 +12,10 @@ start "Performance Optimizer Frontend" cmd /k "cd frontend && npm run dev"
 echo [3/3] Opening Application in Browser...
 echo Waiting 5 seconds for services to spin up...
 timeout /t 5 /nobreak >nul
-start http://127.0.0.1:3000
+start http://127.0.0.1:8080
 
 echo ============================================
 echo   System Started!
 echo   Backend: http://127.0.0.1:8000
-echo   Frontend: http://127.0.0.1:3000
+echo   Frontend: http://127.0.0.1:8080
 echo ============================================
