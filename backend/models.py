@@ -12,6 +12,14 @@ class Developer(Base):
 
     metrics = relationship("Metric", back_populates="developer")
 
+class Repository(Base):
+    __tablename__ = "repositories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) # e.g. "owner/repo"
+    url = Column(String, nullable=True)
+    token = Column(String, nullable=True)
+
 class Metric(Base):
     __tablename__ = "metrics"
 

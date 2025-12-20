@@ -4,7 +4,7 @@ echo   Starting Performance Optimizer System
 echo ============================================
 
 echo [1/3] Starting Backend Server...
-start "Performance Optimizer Backend" cmd /k "cd backend && venv\Scripts\activate && uvicorn main:app --reload"
+start "Performance Optimizer Backend" cmd /k "call backend\venv\Scripts\activate && uvicorn backend.main:app --reload --port 5000"
 
 echo [2/3] Starting Frontend Server...
 start "Performance Optimizer Frontend" cmd /k "cd frontend && npm run dev"
@@ -16,6 +16,6 @@ start http://127.0.0.1:8080
 
 echo ============================================
 echo   System Started!
-echo   Backend: http://127.0.0.1:8000
+echo   Backend: http://127.0.0.1:5000
 echo   Frontend: http://127.0.0.1:8080
 echo ============================================
