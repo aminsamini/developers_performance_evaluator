@@ -47,15 +47,16 @@ class GitService:
                 )
                 
                 if response.status_code != 200:
-                    print(f"Stats check failed: {response.status_code} {response.text}")
-                    return 0
+                    error_msg = f"GitHub API Error: {response.status_code} {response.text}"
+                    print(error_msg)
+                    raise Exception(error_msg)
 
                 data = response.json()
                 return len(data)
 
             except httpx.HTTPError as e:
-                print(f"GitHub API Error for {repo_name}: {e}")
-                return 0
+                print(f"GitHub API Connection Error for {repo_name}: {e}")
+                raise e
 
     async def validate_repo_token(self, repo_name: str, token: str) -> bool:
         """

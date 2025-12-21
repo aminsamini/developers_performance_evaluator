@@ -26,83 +26,74 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
         ).first()
 
         # Check if the existing data is "finalized"
-        # If updated_at exists and date() > target_date, it was updated AFTER the day closed.
         is_finalized = False
         if metric and metric.updated_at:
             is_finalized = (metric.updated_at.date() > target_date)
 
-        # Optimization Logic:
-        # If optimize=True, we WANT to skip.
-        # But if it's NOT finalized (meaning partial sync during the day), we MUST fetch.
-        # User Rule: "if updated_at == date check that date again" -> implies re-fetch if not finalized.
+        # STRICT OPTIMIZATION Rule #1:
+        # "if there is a record even if its 0 there is no need to check again, just check the date with the updated_at date"
+        # Implication: If is_finalized is True, we TRUST the data (even if 0), so we SKIP.
+        if optimize and metric and is_finalized:
+             print(f"  [Skipping] {dev.name} for {target_date} (Finalized & Strict Optimization)")
+             results.append({
+                "developer": dev.name,
+                "date": target_date.isoformat(),
+                "commits": metric.commits_count,
+                "coding_time": f"{metric.coding_time_seconds//60} mins",
+                "score": metric.score
+             })
+             continue
         
-        force_fetch = False
-        if optimize and metric and not is_finalized:
-             print(f"  [Re-Checking] {dev.name} for {target_date} (Last update was partial/same-day)")
-             force_fetch = True
+        # If not finalized, or optimizations off, or no record -> We proceed to fetch.
+        
+        try:
+            # ATOMIC SYNC Rule #2:
+            # "make a validation if the request... interrupt or not give whole data dont make a record"
+            # We use local variables. We only write to DB at the end if ALL succeed.
 
-        # --- 1. Git Commits ---
-        total_commits = 0
-        should_fetch_git = True
-        
-        # If optimization is allowed AND (data exists OR finalized) AND not forcing fetch
-        if optimize and metric and not force_fetch:
-            if metric.commits_count > 0:
-                 print(f"  [Skipping Git] {dev.name} already has commit data for {target_date}")
-                 total_commits = metric.commits_count
-                 should_fetch_git = False
-            # Else if 0, we fetch (default behavior) unless we want to trust finalized 0?
-            # User said: "if each field has value more than 0 it will not check it again"
-            # Implicitly, if 0, check again? But if finalized, maybe we shouldn't?
-            # Let's start with safe approach: if 0, check again.
-        
-        if should_fetch_git:
+            # --- 1. Git Commits ---
+            total_commits = 0
             if repositories:
                 for repo in repositories:
+                    # fetch_commits_in_repo now RAISES exception on error (modified in git_service.py)
                     count = await git_service.fetch_commits_in_repo(dev.git_username, repo.name, target_date, target_date, token=repo.token)
                     total_commits += count
 
-        # --- 2. WakaTime Stats ---
-        coding_seconds = 0
-        should_fetch_waka = True
-        
-        if optimize and metric and not force_fetch:
-            if metric.coding_time_seconds > 0:
-                 # print(f"  [Skipping Waka] {dev.name} already has wakatime data")
-                 coding_seconds = metric.coding_time_seconds
-                 should_fetch_waka = False
-
-        if should_fetch_waka and dev.wakatime_api_key:
-            try:
+            # --- 2. WakaTime Stats ---
+            coding_seconds = 0
+            if dev.wakatime_api_key:
+                # WakaTime service might still swallow errors or return 0? Let's check wakatime_service later.
+                # For now, if it raises, we catch and abort.
                 coding_seconds = await wakatime_service.fetch_coding_time(dev.wakatime_api_key, target_date)
-            except Exception as e:
-                print(f"Error fetching WakaTime for {dev.name}: {e}")
-                should_fetch_waka = False # Failed, so effectively "fetched" 0 or keep old?
-                # If we have old data, keep it?
-                if metric: coding_seconds = metric.coding_time_seconds
-                else: coding_seconds = 0
             
-        # 3. Calculate Score
-        score = (total_commits * 10) + ((coding_seconds / 3600) * 5)
-        
-        # 4. Save/Update DB
-        if not metric:
-            metric = Metric(developer_id=dev.id, date=target_date)
-            db.add(metric)
-        
-        metric.commits_count = total_commits
-        metric.coding_time_seconds = coding_seconds
-        metric.score = round(score, 2)
-        metric.updated_at = datetime.now() # Update timestamp!
-        
-        db.commit()
-        results.append({
-            "developer": dev.name,
-            "date": target_date.isoformat(),
-            "commits": total_commits,
-            "coding_time": f"{coding_seconds//60} mins",
-            "score": metric.score
-        })
+            # 3. Calculate Score
+            score = (total_commits * 10) + ((coding_seconds / 3600) * 5)
+            
+            # 4. Save/Update DB (Only reached if no exception raised above)
+            if not metric:
+                metric = Metric(developer_id=dev.id, date=target_date)
+                db.add(metric)
+            
+            metric.commits_count = total_commits
+            metric.coding_time_seconds = coding_seconds
+            metric.score = round(score, 2)
+            metric.updated_at = datetime.now()
+            
+            db.commit() # Commit per developer/day (Atomic enough for this context)
+            
+            results.append({
+                "developer": dev.name,
+                "date": target_date.isoformat(),
+                "commits": total_commits,
+                "coding_time": f"{coding_seconds//60} mins",
+                "score": metric.score
+            })
+
+        except Exception as e:
+            print(f"  [Sync Failed] Skiling {dev.name} for {target_date} due to error: {e}")
+            db.rollback() # Rollback changes for this specific developer/day
+            # We do NOT add to results, effectively "not making a record" or reporting incomplete data.
+            continue
         
     return results
 
