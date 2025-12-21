@@ -61,10 +61,30 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
 
             # --- 2. WakaTime Stats ---
             coding_seconds = 0
+            # --- 2. WakaTime Stats ---
+            coding_seconds = 0
             if dev.wakatime_api_key:
-                # WakaTime service might still swallow errors or return 0? Let's check wakatime_service later.
-                # For now, if it raises, we catch and abort.
-                coding_seconds = await wakatime_service.fetch_coding_time(dev.wakatime_api_key, target_date)
+                # Prepare Allowed Projects List
+                # User wants to filter only for "files which is on my repos".
+                # WakaTime usually reports project name as the folder name (e.g., "performance_optimizer").
+                # Our Repos are "aminsamiini-dev/performance_optimizer".
+                # Strategy: Allow both full name AND the slug (part after the last slash).
+                allowed_projects = []
+                if repositories:
+                    for r in repositories:
+                        allowed_projects.append(r.name) # "owner/repo"
+                        if "/" in r.name:
+                            allowed_projects.append(r.name.split("/")[-1]) # "repo"
+                
+                try:
+                    coding_seconds = await wakatime_service.fetch_coding_time(
+                        dev.wakatime_api_key, 
+                        target_date, 
+                        allowed_projects=allowed_projects if allowed_projects else None
+                    )
+                except Exception as e:
+                    print(f"Error fetching WakaTime for {dev.name}: {e}")
+                    raise e # Re-raise to trigger Atomic Rollback logic
             
             # 3. Calculate Score
             score = (total_commits * 10) + ((coding_seconds / 3600) * 5)

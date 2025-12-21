@@ -22,6 +22,7 @@ Score = (Commits * 10) + (Coding Hours * 5)
 2.  **Coding Time (Weight: 5 per hour)**
     *   **Source**: WakaTime API
     *   **Logic**: The total time spent coding (in seconds) as tracked by the user's IDE plugin.
+    *   **Filtering**: Time is **only counted** if it is associated with a WakaTime project that matches one of the tracked repositories (either exact match or repository name match). Work on unrelated projects is ignored.
     *   **Calculation**: `(Total Seconds / 3600) * 5`
     *   **Effect**: Every hour of coding contributes **5 points**.
 
