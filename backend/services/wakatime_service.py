@@ -40,11 +40,23 @@ class WakaTimeService:
                         # print(f"WakaTime Projects: {[p['name'] for p in projects]}")
                         # print(f"Allowed Projects: {allowed_projects}")
 
+                        # Normalize function for matching
+                        def normalize(name):
+                            return name.lower().replace("_", "").replace("-", "").replace(" ", "")
+
+                        normalized_allowed = [normalize(p) for p in allowed_projects]
+
                         for proj in projects:
-                            # Loose matching: check if project name is in our allowed list
-                            # WakaTime often uses just directory name. 
-                            # allowed_projects should likely contain both "owner/repo" and "repo".
-                            if proj["name"] in allowed_projects:
+                            p_name = proj["name"]
+                            # Check exact, normalized, or loose containment
+                            norm_name = normalize(p_name)
+                            
+                            is_match = (
+                                p_name in allowed_projects or 
+                                norm_name in normalized_allowed
+                            )
+                            
+                            if is_match:
                                 total_filtered_seconds += proj["total_seconds"]
                         
                         return int(total_filtered_seconds)
@@ -54,5 +66,55 @@ class WakaTimeService:
                 return 0
             
             except httpx.HTTPError as e:
-                print(f"WakaTime API Error: {e}")
-                raise e # Propagate error for atomic sync rollback
+                print(f"WakaTime API Summaries Error: {e}")
+                raise e
+
+    async def fetch_durations(self, api_key: str, day: date) -> list:
+        """
+        Fetches granular 'durations' (time ticks) for deep work analysis.
+        Return: List of duration dicts.
+        """
+        if not api_key: return []
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/users/current/durations",
+                    params={
+                        "date": day.isoformat(),
+                        "api_key": api_key
+                    }
+                )
+                if response.status_code == 402:
+                    print("WakaTime Durations API requires Premium (402). Skipping deep work analysis.")
+                    return [] 
+                
+                response.raise_for_status()
+                data = response.json()
+                return data.get("data", [])
+            except Exception as e:
+                print(f"WaKaTime Durations Error: {e}")
+                return [] # Non-critical failure
+
+    async def fetch_detailed_summary(self, api_key: str, day: date) -> dict:
+        """
+        Fetches the full summary object (languages, editors, etc) for storage.
+        """
+        if not api_key: return {}
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/users/current/summaries",
+                    params={
+                        "start": day.isoformat(),
+                        "end": day.isoformat(),
+                        "api_key": api_key
+                    }
+                )
+                response.raise_for_status()
+                data = response.json()
+                if data.get("data"):
+                    return data["data"][0]
+                return {}
+            except Exception as e:
+                print(f"WakaTime Detailed Summary Error: {e}")
+                return {}

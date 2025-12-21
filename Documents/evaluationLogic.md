@@ -4,27 +4,38 @@ This document describes how the Performance Optimizer application calculates sco
 
 ## Scoring Formula
 
-The daily score for each developer is calculated using a composite metric of **Code Commits** and **Coding Time**.
+The daily score shifts focus from "Quantity" to "Quality" and "Stability".
 
 ### Formula
 ```
-Score = (Commits * 10) + (Coding Hours * 5)
+Score = (Commits * 1) + (Coding Hours * 10) + (Files Modified * 20) + (Lines Changed * 0.05) + ((1 - Churn) * 50)
 ```
 
 ### Components
 
-1.  **Commits (Weight: 10)**
-    *   **Source**: GitHub API
-    *   **Logic**: The total number of commits pushed to *all* tracked repositories on that specific day.
-    *   **Multiplier**: Each commit is worth **10 points**. 
-    *   *Note*: Merges and pull requests count as commits if they appear in the commit history with the user's author email/username.
+### Components
 
-2.  **Coding Time (Weight: 5 per hour)**
-    *   **Source**: WakaTime API
-    *   **Logic**: The total time spent coding (in seconds) as tracked by the user's IDE plugin.
-    *   **Filtering**: Time is **only counted** if it is associated with a WakaTime project that matches one of the tracked repositories (either exact match or repository name match). Work on unrelated projects is ignored.
-    *   **Calculation**: `(Total Seconds / 3600) * 5`
-    *   **Effect**: Every hour of coding contributes **5 points**.
+1.  **Commits (Weight: 1)**
+    *   **Logic**: Count of commits.
+    *   **Impact**: **Lowest**. Each commit is worth only 1 point.
+
+2.  **Files Modified (Weight: 20)**
+    *   **Logic**: Number of unique files touched.
+    *   **Impact**: **Highest**. Indicates the breadth and complexity of the task.
+
+3.  **Lines Changed (Weight: 0.05)**
+    *   **Logic**: Sum of Lines Added + Lines Deleted.
+    *   **Impact**: **Volume Bonus**.
+
+4.  **Stability Bonus (Weight: Up to 50)**
+    *   **Logic**: `(1.0 - Churn Score)`. High Churn (Rework) reduces this bonus.
+
+5.  **Enhanced Time Score (Composite)**
+    *   **Active Coding**: **5 pts/hr**. Time spent actively typing/editing.
+    *   **Deep Work**: **10 pts/hr**. Uninterrupted sessions > 1 hour.
+    *   **Project Focus**: **Max 15 pts**. Ratio of time spent on primary project vs distractions.
+    *   **Context Switching**: **-2 pts per switch**. Penalty for frequent task switching.
+    *   *Formula*: `(ActiveHours * 5) + (DeepWorkHours * 10) + (FocusRatio * 15) - (Switches * 2)`
 
 ### Reliability & Verification
 

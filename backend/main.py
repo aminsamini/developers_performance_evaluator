@@ -129,8 +129,10 @@ def get_metrics(days: int = 30, db: Session = Depends(database.get_db)):
     Fetch historical metrics for the last N days.
     """
     from datetime import date, timedelta
+    from .utils import get_current_time
     
-    since_date = date.today() - timedelta(days=days)
+    # Use timezone aware "today"
+    since_date = get_current_time().date() - timedelta(days=days)
     
     # Fetch metrics joined with Developer info
     metrics = db.query(models.Metric).join(models.Developer).filter(
@@ -148,7 +150,11 @@ def get_metrics(days: int = 30, db: Session = Depends(database.get_db)):
             "developer": m.developer.name,
             "commits": m.commits_count,
             "coding_time": f"{m.coding_time_seconds // 60} mins",
-            "score": m.score
+            "deep_work": f"{(m.deep_work_seconds or 0) // 60} mins",
+            "focus_ratio": m.project_focus_ratio,
+            "switches": m.context_switches,
+            "score": m.score,
+            "details": m.wakatime_data
         })
     
     # Return list of { date: "YYYY-MM-DD", items: [...] }

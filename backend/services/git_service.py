@@ -11,16 +11,16 @@ class GitService:
             "Accept": "application/vnd.github.v3+json"
         }
 
-    async def fetch_commits_in_repo(self, username: str, repo_name: str, since_date: date, until_date: date | None = None, token: str | None = None) -> int:
+    async def fetch_commits_in_repo(self, username: str, repo_name: str, since_date: date, until_date: date | None = None, token: str | None = None) -> dict:
         """
-        Fetches the number of commits by a user in a SPECIFIC repository within a date range.
-        If 'token' is provided, it uses that instead of the default env token.
+        Fetches detailed stats for commits by a user in a repository within a date range.
+        Returns: { 'count': int, 'lines_added': int, 'lines_deleted': int, 'files_modified': int }
         """
         api_token = token if token else self.token
         
         if not api_token:
              print("Warning: GITHUB_TOKEN not set and no repo token provided.")
-             return 0
+             return {'count': 0, 'lines_added': 0, 'lines_deleted': 0, 'files_modified': 0}
 
         headers = {
             "Authorization": f"token {api_token}",
@@ -38,8 +38,8 @@ class GitService:
                 next_day = until_date + timedelta(days=1)
                 params["until"] = next_day.isoformat()
             
-            # print(f"DEBUG GIT REQUEST: {repo_name} | {params}")
             try:
+                # 1. Get List of Commits (High Level)
                 response = await client.get(
                     f"{self.base_url}/repos/{repo_name}/commits", 
                     headers=headers, 
@@ -51,8 +51,36 @@ class GitService:
                     print(error_msg)
                     raise Exception(error_msg)
 
-                data = response.json()
-                return len(data)
+                commits_list = response.json()
+                
+                total_stats = {
+                    'count': len(commits_list),
+                    'lines_added': 0,
+                    'lines_deleted': 0,
+                    'files_modified': 0
+                }
+
+                # 2. Fetch Details for Each Commit (Stats)
+                print(f"  Fetching details for {len(commits_list)} commits in {repo_name}...")
+                for commit in commits_list:
+                    sha = commit['sha']
+                    # Could potentially parallelize this with asyncio.gather, but keeping simple loop for reliability first.
+                    detail_resp = await client.get(
+                        f"{self.base_url}/repos/{repo_name}/commits/{sha}",
+                        headers=headers
+                    )
+                    if detail_resp.status_code == 200:
+                        detail = detail_resp.json()
+                        stats = detail.get('stats', {'additions': 0, 'deletions': 0})
+                        files = detail.get('files', [])
+                        
+                        total_stats['lines_added'] += stats['additions']
+                        total_stats['lines_deleted'] += stats['deletions']
+                        total_stats['files_modified'] += len(files)
+                    else:
+                        print(f"    Failed to fetch commit {sha}: {detail_resp.status_code}")
+
+                return total_stats
 
             except httpx.HTTPError as e:
                 print(f"GitHub API Connection Error for {repo_name}: {e}")

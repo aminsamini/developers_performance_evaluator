@@ -29,9 +29,18 @@ class Metric(Base):
     
     # Git Metrics
     commits_count = Column(Integer, default=0)
+    lines_added = Column(Integer, default=0)
+    lines_deleted = Column(Integer, default=0)
+    files_modified = Column(Integer, default=0)
+    churn_score = Column(Float, default=0.0)
     
     # WakaTime Metrics
-    coding_time_seconds = Column(Integer, default=0)
+    coding_time_seconds = Column(Integer, default=0) # Total time
+    active_coding_seconds = Column(Integer, default=0) # Filtered/Active time
+    deep_work_seconds = Column(Integer, default=0) # Time in >1hr sessions
+    project_focus_ratio = Column(Float, default=0.0) # 0.0 to 1.0
+    context_switches = Column(Integer, default=0) # Count of switches
+    wakatime_data = Column(String, nullable=True) # JSON dump for breakdown
     
     # Review Metrics (could be extended)
     review_count = Column(Integer, default=0)
