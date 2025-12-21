@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { API_BASE_URL } from '../config';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Card from 'primevue/card';
@@ -25,7 +26,7 @@ const fetchHistory = async () => {
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch('http://127.0.0.1:5000/metrics/');
+    const response = await fetch(`${API_BASE_URL}/metrics/`);
     if (!response.ok) throw new Error(await response.text());
     archiveData.value = await response.json();
   } catch (err) {
