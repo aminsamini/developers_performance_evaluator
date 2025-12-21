@@ -4,9 +4,10 @@ from ..models import Developer, Metric, Repository
 from .git_service import GitService
 from .wakatime_service import WakaTimeService
 
-async def sync_daily_metrics(db: Session, target_date: date):
+async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = False):
     """
     Syncs metrics for all developers for a SPECIFIC DATE.
+    If optimize=True, skips fetching for a developer if they already have >0 data for this date.
     """
     git_service = GitService()
     wakatime_service = WakaTimeService()
@@ -15,31 +16,53 @@ async def sync_daily_metrics(db: Session, target_date: date):
     repositories = db.query(Repository).all()
     results = []
 
-    print(f"--- Syncing metrics for {target_date} ---")
+    print(f"--- Syncing metrics for {target_date} (Optimize={optimize}) ---")
 
     for dev in developers:
-        # 1. Fetch Git Commits (for this specific day)
+        # Check existing metric first
+        metric = db.query(Metric).filter(
+            Metric.developer_id == dev.id, 
+            Metric.date == target_date
+        ).first()
+
+        # --- 1. Git Commits ---
         total_commits = 0
-        if repositories:
-            for repo in repositories:
-                # To get commits for ONE day, since=target, until=target
-                count = await git_service.fetch_commits_in_repo(dev.git_username, repo.name, target_date, target_date, token=repo.token)
-                total_commits += count
+        should_fetch_git = True
         
-        # 2. Fetch WakaTime Stats
+        if optimize and metric and metric.commits_count > 0:
+             print(f"  [Skipping Git] {dev.name} already has commit data for {target_date}")
+             total_commits = metric.commits_count
+             should_fetch_git = False
+        
+        if should_fetch_git:
+            if repositories:
+                for repo in repositories:
+                    count = await git_service.fetch_commits_in_repo(dev.git_username, repo.name, target_date, target_date, token=repo.token)
+                    total_commits += count
+
+        # --- 2. WakaTime Stats ---
         coding_seconds = 0
-        if dev.wakatime_api_key:
-            coding_seconds = await wakatime_service.fetch_coding_time(dev.wakatime_api_key, target_date)
+        should_fetch_waka = True
+        
+        if optimize and metric and metric.coding_time_seconds > 0:
+             # Just a log if you want, or silent
+             # print(f"  [Skipping Waka] {dev.name} already has wakatime data")
+             coding_seconds = metric.coding_time_seconds
+             should_fetch_waka = False
+
+        if should_fetch_waka and dev.wakatime_api_key:
+            try:
+                coding_seconds = await wakatime_service.fetch_coding_time(dev.wakatime_api_key, target_date)
+            except Exception as e:
+                print(f"Error fetching WakaTime for {dev.name}: {e}")
+                # If fetch failed, keep 0 or fallback to existing? 
+                # Better keep 0 so we retry next time if optimize=True/False logic holds.
+                coding_seconds = 0
             
         # 3. Calculate Score
         score = (total_commits * 10) + ((coding_seconds / 3600) * 5)
         
         # 4. Save/Update DB
-        metric = db.query(Metric).filter(
-            Metric.developer_id == dev.id, 
-            Metric.date == target_date
-        ).first()
-        
         if not metric:
             metric = Metric(developer_id=dev.id, date=target_date)
             db.add(metric)
@@ -66,11 +89,13 @@ async def sync_historical_data(db: Session, days: int = 7):
     today = date.today()
     for i in range(days):
         target_date = today - timedelta(days=i)
-        print(f"Checking data for {target_date}...")
-        # Check if we already have fully populated data? 
-        # For now, we just re-sync to be safe, or we could check if any metric exists.
-        # Let's force sync for now to ensure consistency.
-        await sync_daily_metrics(db, target_date)
+        is_today = (target_date == today)
+        
+        # Optimize if NOT today (Meaning: user wants full check for today, partial/smart for past)
+        should_optimize = not is_today
+        
+        print(f"Checking data for {target_date}... (Optimize={should_optimize})")
+        await sync_daily_metrics(db, target_date, optimize=should_optimize)
 
 async def collect_metrics_for_all_developers(db: Session):
     """
@@ -79,5 +104,6 @@ async def collect_metrics_for_all_developers(db: Session):
     """
     # For manual sync, let's just do TODAY.
     today = date.today()
-    return await sync_daily_metrics(db, today)
+    # User requested to update last 7 days on sync
+    return await sync_historical_data(db, days=7)
 
