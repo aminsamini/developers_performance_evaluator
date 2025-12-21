@@ -91,9 +91,10 @@ onMounted(fetchRepositories);
         <template #title>Repositories</template>
         <template #content>
             <div class="flex flex-col gap-4">
-                <div class="flex gap-2">
+                <div class="flex flex-col gap-2">
                     <InputText v-model="repoName" placeholder="owner/repo (e.g. vuejs/core)" class="w-full" />
-                    <Button icon="pi pi-plus" @click="addRepository" :loading="loading" />
+                    <InputText v-model="repoToken" placeholder="GitHub Token (Optional - For Private Repos)" class="w-full" type="password" />
+                    <Button label="Add Repository" icon="pi pi-plus" @click="addRepository" :loading="loading" class="w-full" />
                 </div>
                 
                 <Message v-if="message" :severity="messageSeverity" :closable="false">{{ message }}</Message>
