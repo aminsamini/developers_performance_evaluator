@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from ..models import Developer, Metric, Repository
 from .git_service import GitService
 from .wakatime_service import WakaTimeService
@@ -25,14 +25,36 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             Metric.date == target_date
         ).first()
 
+        # Check if the existing data is "finalized"
+        # If updated_at exists and date() > target_date, it was updated AFTER the day closed.
+        is_finalized = False
+        if metric and metric.updated_at:
+            is_finalized = (metric.updated_at.date() > target_date)
+
+        # Optimization Logic:
+        # If optimize=True, we WANT to skip.
+        # But if it's NOT finalized (meaning partial sync during the day), we MUST fetch.
+        # User Rule: "if updated_at == date check that date again" -> implies re-fetch if not finalized.
+        
+        force_fetch = False
+        if optimize and metric and not is_finalized:
+             print(f"  [Re-Checking] {dev.name} for {target_date} (Last update was partial/same-day)")
+             force_fetch = True
+
         # --- 1. Git Commits ---
         total_commits = 0
         should_fetch_git = True
         
-        if optimize and metric and metric.commits_count > 0:
-             print(f"  [Skipping Git] {dev.name} already has commit data for {target_date}")
-             total_commits = metric.commits_count
-             should_fetch_git = False
+        # If optimization is allowed AND (data exists OR finalized) AND not forcing fetch
+        if optimize and metric and not force_fetch:
+            if metric.commits_count > 0:
+                 print(f"  [Skipping Git] {dev.name} already has commit data for {target_date}")
+                 total_commits = metric.commits_count
+                 should_fetch_git = False
+            # Else if 0, we fetch (default behavior) unless we want to trust finalized 0?
+            # User said: "if each field has value more than 0 it will not check it again"
+            # Implicitly, if 0, check again? But if finalized, maybe we shouldn't?
+            # Let's start with safe approach: if 0, check again.
         
         if should_fetch_git:
             if repositories:
@@ -44,20 +66,21 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
         coding_seconds = 0
         should_fetch_waka = True
         
-        if optimize and metric and metric.coding_time_seconds > 0:
-             # Just a log if you want, or silent
-             # print(f"  [Skipping Waka] {dev.name} already has wakatime data")
-             coding_seconds = metric.coding_time_seconds
-             should_fetch_waka = False
+        if optimize and metric and not force_fetch:
+            if metric.coding_time_seconds > 0:
+                 # print(f"  [Skipping Waka] {dev.name} already has wakatime data")
+                 coding_seconds = metric.coding_time_seconds
+                 should_fetch_waka = False
 
         if should_fetch_waka and dev.wakatime_api_key:
             try:
                 coding_seconds = await wakatime_service.fetch_coding_time(dev.wakatime_api_key, target_date)
             except Exception as e:
                 print(f"Error fetching WakaTime for {dev.name}: {e}")
-                # If fetch failed, keep 0 or fallback to existing? 
-                # Better keep 0 so we retry next time if optimize=True/False logic holds.
-                coding_seconds = 0
+                should_fetch_waka = False # Failed, so effectively "fetched" 0 or keep old?
+                # If we have old data, keep it?
+                if metric: coding_seconds = metric.coding_time_seconds
+                else: coding_seconds = 0
             
         # 3. Calculate Score
         score = (total_commits * 10) + ((coding_seconds / 3600) * 5)
@@ -70,6 +93,7 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
         metric.commits_count = total_commits
         metric.coding_time_seconds = coding_seconds
         metric.score = round(score, 2)
+        metric.updated_at = datetime.now() # Update timestamp!
         
         db.commit()
         results.append({

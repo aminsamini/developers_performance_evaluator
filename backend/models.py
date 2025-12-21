@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -38,5 +38,8 @@ class Metric(Base):
     
     # Composite Score
     score = Column(Float, default=0.0)
+    
+    # Tracking
+    updated_at = Column(DateTime, nullable=True)
 
     developer = relationship("Developer", back_populates="metrics")
