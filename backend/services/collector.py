@@ -212,6 +212,7 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             metric.project_focus_ratio = project_focus_ratio
             metric.context_switches = context_switches
             metric.wakatime_data = wakatime_json
+            metric.score = score
             
             # Use timezone aware current time
             from ..utils import get_current_time
