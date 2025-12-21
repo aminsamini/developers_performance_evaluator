@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { API_BASE_URL } from '../config';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Card from 'primevue/card';
@@ -23,7 +24,7 @@ const addDeveloper = async () => {
   try {
     console.log('Sending request to add developer:', { name: name.value, git_username: git_username.value });
     
-    const response = await fetch('http://127.0.0.1:5000/developers/', {
+    const response = await fetch(`${API_BASE_URL}/developers/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

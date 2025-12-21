@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { API_BASE_URL } from '../config';
 import Card from 'primevue/card';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -22,7 +23,7 @@ const isValidRef = computed(() => {
 
 const fetchRepositories = async () => {
     try {
-        const res = await fetch('http://127.0.0.1:5000/repositories/');
+        const res = await fetch(`${API_BASE_URL}/repositories/`);
         repositories.value = await res.json();
     } catch (e) {
         console.error(e);
@@ -48,7 +49,7 @@ const addRepository = async () => {
     message.value = '';
     
     try {
-        const res = await fetch('http://127.0.0.1:5000/repositories/', {
+        const res = await fetch(`${API_BASE_URL}/repositories/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 

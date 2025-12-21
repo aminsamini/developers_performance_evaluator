@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { API_BASE_URL } from '../config';
 import AddDeveloperForm from './AddDeveloperForm.vue';
 import RepositoryManager from './RepositoryManager.vue';
 import ActivityArchive from './ActivityArchive.vue';
@@ -49,7 +50,7 @@ const syncData = async () => {
   syncMessage.value = 'Syncing...';
   syncSeverity.value = 'info';
   try {
-    const response = await fetch('http://127.0.0.1:5000/sync', { method: 'POST' });
+    const response = await fetch(`${API_BASE_URL}/sync`, { method: 'POST' });
     if (response.ok) {
         const data = await response.json();
         metrics.value = data.results;
