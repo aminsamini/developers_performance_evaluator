@@ -2,58 +2,107 @@
 
 This document describes how the Performance Optimizer application calculates scores for developers.
 
+## Zero Activity Rule
+
+> **IMPORTANT**: If a developer has no work activity for a day (0 commits, 0 coding time, 0 files modified), their score is **0**.
+
+This prevents the "50-point inactive day" bug that previously occurred due to the stability bonus being awarded even when no work was done.
+
 ## Scoring Formula
 
-The daily score shifts focus from "Quantity" to "Quality" and "Stability".
+The daily score focuses on **Quality**, **Stability**, and **Time Investment**.
 
 ### Formula
 ```
-Score = (Commits * 1) + (Coding Hours * 10) + (Files Modified * 20) + (Lines Changed * 0.05) + ((1 - Churn) * 50)
+IF no_activity THEN
+    Score = 0
+ELSE
+    Score = Commits + Files + Lines + Stability + TimeScore
 ```
 
-### Components
+Where:
+- `Commits = count * 1`
+- `Files = files_modified * 20`
+- `Lines = (lines_added + lines_deleted) * 0.05`
+- `Stability = (1.0 - churn_score) * 50`
+- `TimeScore = max(0, ActiveTime + DeepWork + Focus - SwitchPenalty)`
 
-### Components
+### Score Components
 
-1.  **Commits (Weight: 1)**
-    *   **Logic**: Count of commits.
-    *   **Impact**: **Lowest**. Each commit is worth only 1 point.
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Commits | 1 per commit | Low impact - encourages atomic commits |
+| Files Modified | 20 per file | **Highest impact** - indicates task breadth/complexity |
+| Lines Changed | 0.05 per line | Volume bonus for additions + deletions |
+| Stability Bonus | Up to 50 | Low churn (rework) = higher bonus |
+| Active Coding | 5 pts/hr | Time actively writing/editing code |
+| Deep Work | 10 pts/hr | Uninterrupted sessions > 1 hour |
+| Project Focus | Up to 15 | Ratio of time on primary project |
+| Context Switches | -2 per switch | Penalty for frequent task switching |
 
-2.  **Files Modified (Weight: 20)**
-    *   **Logic**: Number of unique files touched.
-    *   **Impact**: **Highest**. Indicates the breadth and complexity of the task.
+### Churn Score Calculation
+```
+churn_score = lines_deleted / (lines_added + lines_deleted)
+```
+- High churn (>0.7) indicates mostly rewriting existing code
+- Low churn (<0.3) indicates primarily new code
 
-3.  **Lines Changed (Weight: 0.05)**
-    *   **Logic**: Sum of Lines Added + Lines Deleted.
-    *   **Impact**: **Volume Bonus**.
+## Example Calculations
 
-4.  **Stability Bonus (Weight: Up to 50)**
-    *   **Logic**: `(1.0 - Churn Score)`. High Churn (Rework) reduces this bonus.
+### Scenario 1: Day Off (No Activity)
+| Metric | Value |
+|--------|-------|
+| Commits | 0 |
+| Coding Time | 0h |
+| Files Modified | 0 |
+| **Score** | **0** |
 
-5.  **Enhanced Time Score (Composite)**
-    *   **Active Coding**: **5 pts/hr**. Time spent actively typing/editing.
-    *   **Deep Work**: **10 pts/hr**. Uninterrupted sessions > 1 hour.
-    *   **Project Focus**: **Max 15 pts**. Ratio of time spent on primary project vs distractions.
-    *   **Context Switching**: **-2 pts per switch**. Penalty for frequent task switching.
-    *   *Formula*: `(ActiveHours * 5) + (DeepWorkHours * 10) + (FocusRatio * 15) - (Switches * 2)`
+*Zero activity = zero score. No stability bonus is awarded.*
 
-### Reliability & Verification
+### Scenario 2: Light Review Day
+| Metric | Value | Points |
+|--------|-------|--------|
+| Commits | 1 | 1 × 1 = 1 |
+| Files Modified | 2 | 2 × 20 = 40 |
+| Lines Changed | 50 | 50 × 0.05 = 2.5 |
+| Churn Score | 0.2 | (1-0.2) × 50 = 40 |
+| Coding Time | 0.5h | 0.5 × 5 = 2.5 |
+| **Total Score** | | **~86** |
 
-*   **Atomic Sync**: Data is only saved if *both* GitHub and WakaTime data are successfully retrieved. If an API failure or network interruption occurs during the fetch, the record for that day is **not updated**, preventing partial or incorrect zero values.
-*   **Finalization**: Once a day has passed and data has been successfully synced (marked by `updated_at` > `date`), the system considers the record "Finalized".
-*   **Optimization**: 
-    *   **Finalized Records**: Are trusted and skipped in future syncs to save API rate limits.
-    *   **Partial Records**: If a record was last updated on the *same day* (potentially incomplete), it is re-checked during the next sync to ensure all data is captured.
-*   **Zero Values**: A zero value (0 commits, 0h time) is considered valid *only if* the sync completed successfully without errors.
+### Scenario 3: Heavy Coding Day
+| Metric | Value | Points |
+|--------|-------|--------|
+| Commits | 5 | 5 × 1 = 5 |
+| Files Modified | 10 | 10 × 20 = 200 |
+| Lines Changed | 800 | 800 × 0.05 = 40 |
+| Churn Score | 0.1 | (1-0.1) × 50 = 45 |
+| Active Coding | 6h | 6 × 5 = 30 |
+| Deep Work | 4h | 4 × 10 = 40 |
+| Focus Ratio | 0.9 | 0.9 × 15 = 13.5 |
+| Switches | 3 | 3 × -2 = -6 |
+| **Total Score** | | **~368** |
 
-## Example Calculation
+## Data Reliability & Verification
 
-**Developer**: Amin
-**Date**: 2025-12-20
-*   **Commits**: 3
-*   **Coding Time**: 4 hours 30 minutes (4.5 hours)
+### Atomic Sync
+- Data is only saved if **both** GitHub and WakaTime data are successfully retrieved
+- API failures or network interruptions result in the record **not being updated**
+- Prevents partial or incorrect zero values
 
-**Score**:
-*   Commit Score: `3 * 10 = 30`
-*   Time Score: `4.5 * 5 = 22.5`
-*   **Total Score**: `30 + 22.5 = 52.5`
+### Finalization
+- Once a day has passed and data is synced (marked by `updated_at > date`), the record is "Finalized"
+- Finalized records are trusted and skipped in future syncs
+- Partial records are re-checked during the next sync
+
+### Zero Values
+A zero value (0 commits, 0h time) is considered valid **only if** the sync completed successfully without errors.
+
+## Industry Alignment
+
+This scoring system aligns with industry best practices for developer productivity measurement:
+
+1. **Quality over Quantity**: High weight on files modified, low weight on commits
+2. **Deep Work Recognition**: Bonus for uninterrupted focus sessions
+3. **Stability Reward**: Clean code with low churn is valued
+4. **Context Switch Awareness**: Encourages focused work on fewer projects
+5. **Transparent Calculation**: All components are visible and explainable

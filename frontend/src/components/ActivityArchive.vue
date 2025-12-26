@@ -5,9 +5,11 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Card from 'primevue/card';
 import Message from 'primevue/message';
+import DeveloperDayDetail from './DeveloperDayDetail.vue';
 
 interface DailyMetric {
   developer: string;
+  developer_id?: number;
   commits: number;
   coding_time: string;
   start?: string;
@@ -24,6 +26,12 @@ const archiveData = ref<DayArchive[]>([]);
 const loading = ref(false);
 const error = ref('');
 
+// Detail modal state
+const detailVisible = ref(false);
+const selectedDeveloperId = ref<number | null>(null);
+const selectedDeveloperName = ref('');
+const selectedDate = ref('');
+
 const fetchHistory = async () => {
   loading.value = true;
   error.value = '';
@@ -38,6 +46,14 @@ const fetchHistory = async () => {
   }
 };
 
+const openDetail = (item: DailyMetric, date: string) => {
+  if (!item.developer_id) return;
+  selectedDeveloperId.value = item.developer_id;
+  selectedDeveloperName.value = item.developer;
+  selectedDate.value = date;
+  detailVisible.value = true;
+};
+
 onMounted(() => {
   fetchHistory();
 });
@@ -46,6 +62,9 @@ onMounted(() => {
 <template>
   <Card class="mt-8">
     <template #title>Activity Archive (Last 30 Days)</template>
+    <template #subtitle>
+      <span class="text-sm text-gray-500">Click on any row to see detailed breakdown</span>
+    </template>
     <template #content>
       <div v-if="loading" class="text-center p-4">Loading history...</div>
       <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
@@ -56,9 +75,17 @@ onMounted(() => {
 
       <div v-for="day in archiveData" :key="day.date" class="mb-6 border-b pb-4 last:border-0">
         <h3 class="text-lg font-semibold text-gray-700 mb-2">{{ new Date(day.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric' }) }}</h3>
-        <DataTable :value="day.items" size="small" stripedRows class="text-sm">
+        <DataTable 
+          :value="day.items" 
+          size="small" 
+          stripedRows 
+          class="text-sm"
+          selectionMode="single"
+          @row-click="(e: { data: DailyMetric }) => openDetail(e.data, day.date)"
+          :rowHover="true"
+          :style="{ cursor: 'pointer' }"
+        >
             <Column field="developer" header="Developer"></Column>
-            <Column field="commits" header="Commits"></Column>
             <Column field="commits" header="Commits"></Column>
             <Column field="start" header="Start">
                  <template #body="slotProps">
@@ -73,11 +100,21 @@ onMounted(() => {
             <Column field="coding_time" header="Duration"></Column>
             <Column field="score" header="Score">
                  <template #body="slotProps">
-                    <span class="font-bold text-indigo-600">{{ slotProps.data.score.toFixed(2) }}</span>
+                    <span class="font-bold" :class="slotProps.data.score > 50 ? 'text-green-600' : slotProps.data.score > 0 ? 'text-yellow-600' : 'text-gray-400'">
+                      {{ slotProps.data.score.toFixed(2) }}
+                    </span>
                  </template>
             </Column>
         </DataTable>
       </div>
     </template>
   </Card>
+
+  <!-- Detail Modal -->
+  <DeveloperDayDetail
+    v-model:visible="detailVisible"
+    :developer-id="selectedDeveloperId"
+    :developer-name="selectedDeveloperName"
+    :date="selectedDate"
+  />
 </template>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -22,6 +22,11 @@ class Repository(Base):
 
 class Metric(Base):
     __tablename__ = "metrics"
+    
+    # Enforce one record per developer per day
+    __table_args__ = (
+        UniqueConstraint('developer_id', 'date', name='uq_developer_date'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     developer_id = Column(Integer, ForeignKey("developers.id"))

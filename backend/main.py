@@ -30,20 +30,10 @@ import asyncio
 @app.on_event("startup")
 async def startup_event():
     """
-    Trigger automated 7-day sync in background on startup.
+    App startup - NO auto-sync. Just load existing data.
+    User must manually click "Sync Data" to fetch new data.
     """
-    async def run_sync():
-        print("Initiating startup background sync (Last 7 Days)...")
-        db = database.SessionLocal()
-        try:
-            await collector.sync_historical_data(db, days=7)
-            print("Startup sync completed.")
-        except Exception as e:
-            print(f"Startup sync failed: {e}")
-        finally:
-            db.close()
-
-    asyncio.create_task(run_sync())
+    print("Performance Optimizer Backend started. No auto-sync - waiting for manual sync request.")
 
 @app.get("/")
 def read_root():
@@ -174,8 +164,11 @@ def get_metrics(days: int = 30, db: Session = Depends(database.get_db)):
         
         grouped[d_str].append({
             "developer": m.developer.name,
+            "developer_id": m.developer_id,
             "commits": m.commits_count,
             "coding_time": f"{m.coding_time_seconds // 60} mins",
+            "start": m.start_work_time,
+            "end": m.end_work_time,
             "deep_work": f"{(m.deep_work_seconds or 0) // 60} mins",
             "focus_ratio": m.project_focus_ratio,
             "switches": m.context_switches,
@@ -193,3 +186,148 @@ def get_metrics(days: int = 30, db: Session = Depends(database.get_db)):
         })
         
     return result_list
+
+
+@app.get("/metrics/detail/{developer_id}/{date_str}")
+def get_metric_detail(developer_id: int, date_str: str, db: Session = Depends(database.get_db)):
+    """
+    Get detailed metrics for a specific developer on a specific date.
+    Returns score breakdown and detailed work information.
+    """
+    from datetime import datetime
+    from .services.score_calculator import get_score_breakdown
+    
+    try:
+        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Get developer
+    developer = db.query(models.Developer).filter(models.Developer.id == developer_id).first()
+    if not developer:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    
+    # Get metric for that day
+    metric = db.query(models.Metric).filter(
+        models.Metric.developer_id == developer_id,
+        models.Metric.date == target_date
+    ).first()
+    
+    if not metric:
+        raise HTTPException(status_code=404, detail="No metrics found for this date")
+    
+    # Get score breakdown
+    breakdown = get_score_breakdown(
+        commits=metric.commits_count or 0,
+        files_modified=metric.files_modified or 0,
+        lines_added=metric.lines_added or 0,
+        lines_deleted=metric.lines_deleted or 0,
+        churn_score=metric.churn_score or 0.0,
+        active_coding_seconds=metric.active_coding_seconds or 0,
+        deep_work_seconds=metric.deep_work_seconds or 0,
+        project_focus_ratio=metric.project_focus_ratio or 0.0,
+        context_switches=metric.context_switches or 0
+    )
+    
+    # Parse wakatime data for charts
+    wakatime_parsed = None
+    if metric.wakatime_data:
+        import json
+        try:
+            wakatime_parsed = json.loads(metric.wakatime_data)
+        except:
+            pass
+    
+    return {
+        "developer": developer.name,
+        "developer_id": developer_id,
+        "date": date_str,
+        "score": metric.score,
+        "score_breakdown": breakdown,
+        "metrics": {
+            "commits": metric.commits_count,
+            "lines_added": metric.lines_added,
+            "lines_deleted": metric.lines_deleted,
+            "files_modified": metric.files_modified,
+            "churn_score": metric.churn_score,
+            "coding_time_seconds": metric.coding_time_seconds,
+            "active_coding_seconds": metric.active_coding_seconds,
+            "deep_work_seconds": metric.deep_work_seconds,
+            "start_time": metric.start_work_time,
+            "end_time": metric.end_work_time,
+            "focus_ratio": metric.project_focus_ratio,
+            "context_switches": metric.context_switches
+        },
+        "wakatime_details": wakatime_parsed
+    }
+
+
+@app.get("/metrics/summary")
+def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
+    """
+    Get aggregated metrics summary for dashboard charts.
+    Returns data for performance trends and team overview.
+    """
+    from datetime import date, timedelta
+    from .utils import get_current_time
+    from sqlalchemy import func
+    
+    today = get_current_time().date()
+    since_date = today - timedelta(days=days)
+    
+    # Get all metrics in range
+    metrics = db.query(models.Metric).join(models.Developer).filter(
+        models.Metric.date >= since_date
+    ).all()
+    
+    # Daily totals for trend chart
+    daily_data = {}
+    developer_totals = {}
+    
+    for m in metrics:
+        d_str = m.date.isoformat()
+        dev_name = m.developer.name
+        
+        # Daily aggregation
+        if d_str not in daily_data:
+            daily_data[d_str] = {"total_score": 0, "total_commits": 0, "total_coding_mins": 0, "count": 0}
+        daily_data[d_str]["total_score"] += m.score or 0
+        daily_data[d_str]["total_commits"] += m.commits_count or 0
+        daily_data[d_str]["total_coding_mins"] += (m.coding_time_seconds or 0) // 60
+        daily_data[d_str]["count"] += 1
+        
+        # Developer aggregation
+        if dev_name not in developer_totals:
+            developer_totals[dev_name] = {"total_score": 0, "days_active": 0, "total_commits": 0}
+        developer_totals[dev_name]["total_score"] += m.score or 0
+        developer_totals[dev_name]["total_commits"] += m.commits_count or 0
+        if (m.commits_count or 0) > 0 or (m.active_coding_seconds or 0) > 0:
+            developer_totals[dev_name]["days_active"] += 1
+    
+    # Format for charts
+    trend_labels = sorted(daily_data.keys())
+    trend_scores = [round(daily_data[d]["total_score"], 1) for d in trend_labels]
+    trend_commits = [daily_data[d]["total_commits"] for d in trend_labels]
+    
+    # Developer leaderboard
+    leaderboard = [
+        {"name": name, **data, "avg_score": round(data["total_score"] / max(data["days_active"], 1), 1)}
+        for name, data in developer_totals.items()
+    ]
+    leaderboard.sort(key=lambda x: x["total_score"], reverse=True)
+    
+    return {
+        "trend": {
+            "labels": trend_labels,
+            "scores": trend_scores,
+            "commits": trend_commits
+        },
+        "leaderboard": leaderboard,
+        "totals": {
+            "total_score": sum(trend_scores),
+            "total_commits": sum(trend_commits),
+            "active_developers": len(developer_totals),
+            "days_tracked": len(daily_data)
+        }
+    }
+

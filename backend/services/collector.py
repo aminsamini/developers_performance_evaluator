@@ -3,6 +3,7 @@ from datetime import date, timedelta, datetime
 from ..models import Developer, Metric, Repository
 from .git_service import GitService
 from .wakatime_service import WakaTimeService
+from .score_calculator import calculate_developer_score
 
 async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = False, developer_id: int | None = None):
     """
@@ -33,7 +34,18 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             Metric.date == target_date
         ).all()
         
-        metric = existing_metrics[0] if existing_metrics else None
+        # ALWAYS clean up duplicates if more than one exists (one-record-per-day rule)
+        if len(existing_metrics) > 1:
+            print(f"  [Cleanup] Found {len(existing_metrics)} records for {dev.name} on {target_date}, keeping newest")
+            # Sort by id descending, keep the first (newest), delete the rest
+            sorted_metrics = sorted(existing_metrics, key=lambda m: m.id, reverse=True)
+            metric = sorted_metrics[0]
+            for m in sorted_metrics[1:]:
+                db.delete(m)
+            db.commit()
+            existing_metrics = [metric]  # Update list to reflect cleanup
+        else:
+            metric = existing_metrics[0] if existing_metrics else None
 
         # Check if the existing data is "finalized"
         is_finalized = False
@@ -55,9 +67,9 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
              })
              continue
         
-        # Explicitly DELETE existing records if we are forcing a sync
+        # For targeted sync (optimize=False), delete and recreate the record
         if not optimize and existing_metrics:
-            print(f"  [Targeted Sync] Deleting {len(existing_metrics)} existing records for {dev.name} on {target_date} to ensure clean rewrite.")
+            print(f"  [Targeted Sync] Deleting existing record for {dev.name} on {target_date} to ensure clean rewrite.")
             for m in existing_metrics:
                 db.delete(m)
             db.commit()
@@ -189,39 +201,19 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                     print(f"Error fetching WakaTime for {dev.name}: {e}")
                     raise e # Re-raise to trigger Atomic Rollback logic
             
-            # 3. Calculate Score
-            # Formula: (Commits * 1) + (Files * 20) + (Lines * 0.05) + ((1 - Churn) * 50) + TIME_SCORE
-            # Time Score = (ActiveHours * 5) + (DeepWorkSessions * 10) + (FocusRate * 15) - (Switches * 2)
-
-            # Points for Commits
-            p_commits = total_commits * 1
-            
-            # Legacy Time Score replaced by Enhanced Time Score
-            # p_time = (coding_seconds / 3600) * 10 
-            
-            # Enhanced Time Score
-            active_hours = active_coding_seconds / 3600
-            deep_work_hours = deep_work_seconds / 3600  # Or counts? Formula says "DeepWorkSessions". 
-            # Let's assume 1 session = 1 hour block. So deep_work_hours is roughly session count.
-            
-            p_active_time = active_hours * 5
-            p_deep_work = deep_work_hours * 10
-            p_focus = project_focus_ratio * 15
-            p_switch_penalty = context_switches * 2
-            
-            # Score can't be negative from penalties? keeping it simple.
-            p_time_score = max(0, p_active_time + p_deep_work + p_focus - p_switch_penalty)
-
-            # Points for Files (Quality/Breadth)
-            p_files = files_modified * 20
-            
-            # Points for Line Volume
-            p_lines = (lines_added + lines_deleted) * 0.05
-            
-            # Points for Stability (Low Churn is Good)
-            p_stability = (1.0 - churn_score) * 50
-            
-            score = p_commits + p_files + p_lines + p_stability + p_time_score
+            # 3. Calculate Score using the extracted score calculator module
+            # This fixes the bug where inactive days would show 50 points
+            score = calculate_developer_score(
+                commits=total_commits,
+                files_modified=files_modified,
+                lines_added=lines_added,
+                lines_deleted=lines_deleted,
+                churn_score=churn_score,
+                active_coding_seconds=active_coding_seconds,
+                deep_work_seconds=deep_work_seconds,
+                project_focus_ratio=project_focus_ratio,
+                context_switches=context_switches
+            )
             
             # 4. Save/Update DB (Only reached if no exception raised above)
             if not metric:
@@ -275,28 +267,46 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
         
     return results
 
-async def sync_historical_data(db: Session, days: int = 30):
-    print(f"--- Starting Historical Sync (Last {days} days) ---")
+async def sync_historical_data(db: Session, days: int = 30, additive: bool = True):
+    """
+    Sync historical data for the last N days.
+    
+    Args:
+        additive: If True, only sync days that have NO existing records (skip days with data).
+                  If False, re-sync all days regardless of existing data.
+    """
+    print(f"--- Starting Historical Sync (Last {days} days, Additive={additive}) ---")
     from ..utils import get_current_time
     today = get_current_time().date()
     start_date = today - timedelta(days=days)
     
+    results = []
     current = start_date
     while current <= today:
-        await sync_daily_metrics(db, current, optimize=True)
+        if additive:
+            # Check if ANY records exist for this date (any developer)
+            existing_count = db.query(Metric).filter(Metric.date == current).count()
+            if existing_count > 0:
+                print(f"  [Additive Skip] {current} already has {existing_count} records, skipping")
+                current += timedelta(days=1)
+                continue
+        
+        day_results = await sync_daily_metrics(db, current, optimize=additive)
+        results.extend(day_results)
         current += timedelta(days=1)
     
-    return await collect_metrics_for_all_developers(db)
+    return results
 
 from ..utils import get_current_time
 
 async def collect_metrics_for_all_developers(db: Session):
     """
-    Wrapper for manual sync button (defaults to just today for speed, or maybe last 7 days?)
-    Let's make manual sync do today + yesterday to be quick but accurate.
+    Manual sync button handler.
+    ADDITIVE SYNC: Only fetches data for days that don't have ANY records.
+    Days with existing data are skipped entirely.
     """
-    # For manual sync, let's just do TODAY (in proper timezone).
-    today = get_current_time().date()
-    # User requested to update last 7 days on sync
-    return await sync_historical_data(db, days=7)
+    print("=== Manual Sync (Additive Mode) ===")
+    # Sync last 7 days, but only for days missing data
+    return await sync_historical_data(db, days=7, additive=True)
+
 
