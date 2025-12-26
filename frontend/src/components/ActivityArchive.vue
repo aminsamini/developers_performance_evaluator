@@ -10,6 +10,8 @@ interface DailyMetric {
   developer: string;
   commits: number;
   coding_time: string;
+  start?: string;
+  end?: string;
   score: number;
 }
 
@@ -57,7 +59,18 @@ onMounted(() => {
         <DataTable :value="day.items" size="small" stripedRows class="text-sm">
             <Column field="developer" header="Developer"></Column>
             <Column field="commits" header="Commits"></Column>
-            <Column field="coding_time" header="Time"></Column>
+            <Column field="commits" header="Commits"></Column>
+            <Column field="start" header="Start">
+                 <template #body="slotProps">
+                    {{ slotProps.data.start || '-' }}
+                 </template>
+            </Column>
+            <Column field="end" header="End">
+                 <template #body="slotProps">
+                    {{ slotProps.data.end || '-' }}
+                 </template>
+            </Column>
+            <Column field="coding_time" header="Duration"></Column>
             <Column field="score" header="Score">
                  <template #body="slotProps">
                     <span class="font-bold text-indigo-600">{{ slotProps.data.score.toFixed(2) }}</span>

@@ -18,6 +18,8 @@ interface MetricResult {
   commits: number;
   coding_time: string;
   score: number;
+  start?: string;
+  end?: string;
   deep_work?: string;
   focus_ratio?: number;
   switches?: number;
@@ -109,6 +111,16 @@ onMounted(syncData);
                             <div v-if="slotProps.data.deep_work" class="text-xs text-gray-500">
                                 Deep Work: {{ slotProps.data.deep_work }}
                             </div>
+                        </template>
+                    </Column>
+                    <Column field="start" header="Start" sortable>
+                        <template #body="slotProps">
+                            {{ slotProps.data.start || '-' }}
+                        </template>
+                    </Column>
+                    <Column field="end" header="End" sortable>
+                        <template #body="slotProps">
+                            {{ slotProps.data.end || '-' }}
                         </template>
                     </Column>
                     <Column field="score" header="Score" sortable>

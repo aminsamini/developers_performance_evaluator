@@ -4,15 +4,23 @@ from ..models import Developer, Metric, Repository
 from .git_service import GitService
 from .wakatime_service import WakaTimeService
 
-async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = False):
+async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = False, developer_id: int | None = None):
     """
-    Syncs metrics for all developers for a SPECIFIC DATE.
+    Syncs metrics for developers for a SPECIFIC DATE.
+    If developer_id is provided, only syncs that developer.
     If optimize=True, skips fetching for a developer if they already have >0 data for this date.
     """
     git_service = GitService()
     wakatime_service = WakaTimeService()
     
-    developers = db.query(Developer).all()
+    if developer_id:
+        developers = db.query(Developer).filter(Developer.id == developer_id).all()
+        if not developers:
+            print(f"Developer with ID {developer_id} not found.")
+            return []
+    else:
+        developers = db.query(Developer).all()
+
     repositories = db.query(Repository).all()
     results = []
 
@@ -105,6 +113,9 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                     # C. Fetch Durations for Deep Work & Context Switching
                     durations = await wakatime_service.fetch_durations(dev.wakatime_api_key, target_date)
                     
+                    min_start_timestamp = None
+                    max_end_timestamp = None
+
                     if durations:
                         # 1. Active Time (Sum of ALL durations)
                         # We use all durations provided by WakaTime for this day
@@ -115,6 +126,10 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                         last_end_time = 0
                         
                         sorted_durations = sorted(durations, key=lambda x: x['time'])
+                        
+                        # Calculate Start/End Times
+                        min_start_timestamp = sorted_durations[0]['time'] if sorted_durations else None
+                        max_end_timestamp = max((d['time'] + d['duration'] for d in sorted_durations), default=None)
                         
                         for d in sorted_durations:
                             start_time = d['time']
@@ -212,6 +227,14 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             metric.project_focus_ratio = project_focus_ratio
             metric.context_switches = context_switches
             metric.wakatime_data = wakatime_json
+            
+            # Format Start/End Strings
+            from ..utils import get_timezone
+            from datetime import datetime
+            tz = get_timezone()
+            metric.start_work_time = datetime.fromtimestamp(min_start_timestamp, tz).strftime("%H:%M") if min_start_timestamp else None
+            metric.end_work_time = datetime.fromtimestamp(max_end_timestamp, tz).strftime("%H:%M") if max_end_timestamp else None
+
             metric.score = score
             
             # Use timezone aware current time
@@ -226,6 +249,8 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                 "date": target_date.isoformat(),
                 "commits": total_commits,
                 "coding_time": f"{coding_seconds//60} mins",
+                "start": metric.start_work_time,
+                "end": metric.end_work_time,
                 "score": metric.score
             })
 

@@ -118,6 +118,32 @@ def get_repositories(db: Session = Depends(database.get_db)):
     return db.query(models.Repository).all()
 
 
+@app.get("/developers/")
+def get_developers(db: Session = Depends(database.get_db)):
+    return db.query(models.Developer).all()
+
+class TargetedSyncRequest(BaseModel):
+    developer_id: int | None = None
+    date: str | None = None # "YYYY-MM-DD"
+
+@app.post("/sync/target")
+async def sync_targeted_metrics(request: TargetedSyncRequest, db: Session = Depends(database.get_db)):
+    from datetime import date as date_obj
+    from datetime import datetime
+    
+    target_date = date_obj.today()
+    if request.date:
+        try:
+             target_date = datetime.strptime(request.date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+            
+    print(f"Received Targeted Sync Request: DevID={request.developer_id}, Date={target_date}")
+    
+    results = await collector.sync_daily_metrics(db, target_date, optimize=False, developer_id=request.developer_id)
+    return {"status": "success", "results": results}
+
+
 @app.post("/sync")
 async def sync_metrics(db: Session = Depends(database.get_db)):
     results = await collector.collect_metrics_for_all_developers(db)
