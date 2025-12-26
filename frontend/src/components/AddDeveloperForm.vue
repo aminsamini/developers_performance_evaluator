@@ -1,32 +1,27 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { API_BASE_URL } from '../config'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
+import Message from 'primevue/message'
 
 const name = ref('')
 const git_username = ref('')
 const wakatime_api_key = ref('')
 const loading = ref(false)
 const message = ref('')
+const visible = ref(false) // Toggle for Dialog
 
 const emit = defineEmits(['developerDataChanged'])
 
 const addDeveloper = async () => {
   loading.value = true
   message.value = ''
+  
+  // Use AbortController for timeout
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s
 
   try {
     const response = await fetch(`${API_BASE_URL}/developers/`, {
@@ -50,6 +45,7 @@ const addDeveloper = async () => {
       git_username.value = ''
       wakatime_api_key.value = ''
       emit('developerDataChanged')
+      // Optional: visible.value = false;
     } else {
       const errorText = await response.text()
       message.value = `Error: ${errorText}`
@@ -67,49 +63,37 @@ const addDeveloper = async () => {
 </script>
 
 <template>
-  <Dialog>
-    <DialogTrigger as-child>
-      <Button variant="outline">
-        Add Developer
-      </Button>
-    </DialogTrigger>
-    <DialogContent class="sm:max-w-[425px]">
-      <DialogHeader>
-        <DialogTitle>Add Developer</DialogTitle>
-        <DialogDescription>
-          Enter the developer's details below. Click save when you're done.
-        </DialogDescription>
-      </DialogHeader>
-      <form @submit.prevent="addDeveloper">
-        <div class="grid gap-4 py-4">
-          <div class="grid grid-cols-4 items-center gap-4">
-            <Label for="name" class="text-right">
-              Name
-            </Label>
-            <Input id="name" v-model="name" class="col-span-3" required />
-          </div>
-          <div class="grid grid-cols-4 items-center gap-4">
-            <Label for="git_username" class="text-right">
-              GitHub Username
-            </Label>
-            <Input id="git_username" v-model="git_username" class="col-span-3" required />
-          </div>
-          <div class="grid grid-cols-4 items-center gap-4">
-            <Label for="wakatime_api_key" class="text-right">
-              WakaTime API Key
-            </Label>
-            <Input id="wakatime_api_key" v-model="wakatime_api_key" class="col-span-3" />
-          </div>
+  <div>
+    <Button label="Add Developer" icon="pi pi-user-plus" @click="visible = true" size="small" />
+
+    <Dialog v-model:visible="visible" header="Add Developer" :modal="true" class="w-full md:w-30rem">
+        <span class="p-text-secondary block mb-5">Enter the developer's details below.</span>
+        
+        <div class="flex flex-col gap-4 mb-4">
+            <div class="flex flex-col gap-2">
+                <label for="name" class="font-semibold text-sm">Name</label>
+                <InputText id="name" v-model="name" class="w-full" required />
+            </div>
+            
+            <div class="flex flex-col gap-2">
+                <label for="git_username" class="font-semibold text-sm">GitHub Username</label>
+                <InputText id="git_username" v-model="git_username" class="w-full" required />
+            </div>
+            
+            <div class="flex flex-col gap-2">
+                <label for="wakatime_api_key" class="font-semibold text-sm">WakaTime API Key</label>
+                <InputText id="wakatime_api_key" v-model="wakatime_api_key" class="w-full" placeholder="Optional" />
+            </div>
         </div>
-        <DialogFooter>
-          <Button type="submit" :disabled="loading">
-            {{ loading ? 'Saving...' : 'Save Changes' }}
-          </Button>
-        </DialogFooter>
-      </form>
-       <div v-if="message" class="mt-4 text-center p-2 rounded-md" :class="{ 'bg-green-100 text-green-800': message.includes('successfully'), 'bg-red-100 text-red-800': message.includes('Error') }">
-        {{ message }}
-      </div>
-    </DialogContent>
-  </Dialog>
+        
+        <div v-if="message" class="mb-4">
+             <Message :severity="message.includes('Error') || message.includes('Network') ? 'error' : 'success'" :closable="false">{{ message }}</Message>
+        </div>
+
+        <div class="flex justify-end gap-2">
+            <Button label="Cancel" text severity="secondary" @click="visible = false" />
+            <Button label="Save" @click="addDeveloper" :loading="loading" autofocus />
+        </div>
+    </Dialog>
+  </div>
 </template>

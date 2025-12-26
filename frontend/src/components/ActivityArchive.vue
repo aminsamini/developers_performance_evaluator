@@ -53,14 +53,14 @@ onMounted(() => {
       </div>
 
       <div v-for="day in archiveData" :key="day.date" class="mb-6 border-b pb-4 last:border-0">
-        <h3 class="text-lg font-semibold text-gray-700 mb-2">{{ day.date }}</h3>
+        <h3 class="text-lg font-semibold text-gray-700 mb-2">{{ new Date(day.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric' }) }}</h3>
         <DataTable :value="day.items" size="small" stripedRows class="text-sm">
             <Column field="developer" header="Developer"></Column>
             <Column field="commits" header="Commits"></Column>
             <Column field="coding_time" header="Time"></Column>
             <Column field="score" header="Score">
                  <template #body="slotProps">
-                    <span class="font-bold text-indigo-600">{{ slotProps.data.score }}</span>
+                    <span class="font-bold text-indigo-600">{{ slotProps.data.score.toFixed(2) }}</span>
                  </template>
             </Column>
         </DataTable>
