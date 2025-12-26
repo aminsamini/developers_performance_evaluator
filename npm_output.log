@@ -1,0 +1,221 @@
+
+> frontend@0.0.0 dev
+> vite
+
+6:38:44 PM [vite] (client) Re-optimizing dependencies because vite config has changed
+
+  VITE v7.3.0  ready in 377 ms
+
+  ➜  Local:   http://127.0.0.1:8080/
+Error: Cannot apply unknown utility class `bg-gray-100`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    at onInvalidCandidate (/app/frontend/node_modules/tailwindcss/dist/lib.js:21:1314)
+    at Te (/app/frontend/node_modules/tailwindcss/dist/lib.js:16:36652)
+    at /app/frontend/node_modules/tailwindcss/dist/lib.js:21:355
+    at Rr (/app/frontend/node_modules/tailwindcss/dist/lib.js:3:1718)
+    at _ (/app/frontend/node_modules/tailwindcss/dist/lib.js:3:1377)
+    at $e (/app/frontend/node_modules/tailwindcss/dist/lib.js:21:172)
+    at un (/app/frontend/node_modules/tailwindcss/dist/lib.js:38:294)
+    at async cn (/app/frontend/node_modules/tailwindcss/dist/lib.js:38:631)
+    at async Xr (/app/frontend/node_modules/@tailwindcss/node/dist/index.js:10:3417)
+    at async I (/app/frontend/node_modules/@tailwindcss/postcss/dist/index.js:10:3977)
+6:39:28 PM [vite] (client) Pre-transform error: [postcss] tailwindcss: /app/frontend/src/App.vue?vue&type=style&index=0&lang.css:1:1: Cannot apply unknown utility class `bg-gray-100`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+  Plugin: vite:css
+  File: /app/frontend/src/App.vue?vue&type=style&index=0&lang.css:1:0
+  1  |
+     |  ^
+  2  |  /* Basic reset/global styles if needed, mostly handled by Tailwind */
+  3  |  body {
+Error: Cannot apply unknown utility class `bg-gray-100`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+    at onInvalidCandidate (/app/frontend/node_modules/tailwindcss/dist/lib.js:21:1314)
+    at Te (/app/frontend/node_modules/tailwindcss/dist/lib.js:16:36652)
+    at /app/frontend/node_modules/tailwindcss/dist/lib.js:21:355
+    at Rr (/app/frontend/node_modules/tailwindcss/dist/lib.js:3:1718)
+    at _ (/app/frontend/node_modules/tailwindcss/dist/lib.js:3:1377)
+    at $e (/app/frontend/node_modules/tailwindcss/dist/lib.js:21:172)
+    at un (/app/frontend/node_modules/tailwindcss/dist/lib.js:38:294)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async cn (/app/frontend/node_modules/tailwindcss/dist/lib.js:38:631)
+    at async Xr (/app/frontend/node_modules/@tailwindcss/node/dist/index.js:10:3417)
+6:39:28 PM [vite] Internal server error: [postcss] tailwindcss: /app/frontend/src/App.vue?vue&type=style&index=0&lang.css:1:1: Cannot apply unknown utility class `bg-gray-100`. Are you using CSS modules or similar and missing `@reference`? https://tailwindcss.com/docs/functions-and-directives#reference-directive
+  Plugin: vite:css
+  File: /app/frontend/src/App.vue?vue&type=style&index=0&lang.css:1:0
+  1  |
+     |  ^
+  2  |  /* Basic reset/global styles if needed, mostly handled by Tailwind */
+  3  |  body {
+      at Input.error (/app/frontend/node_modules/postcss/lib/input.js:135:16)
+      at Root.error (/app/frontend/node_modules/postcss/lib/node.js:146:32)
+      at Object.Once (/app/frontend/node_modules/@tailwindcss/postcss/dist/index.js:10:6911)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async LazyResult.runAsync (/app/frontend/node_modules/postcss/lib/lazy-result.js:293:11)
+      at async runPostCSS (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:30144:19)
+      at async compilePostCSS (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:30128:6)
+      at async compileCSS (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:30058:26)
+      at async TransformPluginContext.handler (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:29591:54)
+      at async EnvironmentPluginContainer.transform (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:28796:14)
+6:39:28 PM [vite] Internal server error: Failed to resolve import "@/components/ui/button" from "src/components/Dashboard.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/Dashboard.vue:8:23
+  6  |  import TargetedSync from "./TargetedSync.vue";
+  7  |  import ActivityArchive from "./ActivityArchive.vue";
+  8  |  import { Button } from "@/components/ui/button";
+     |                          ^
+  9  |  import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+  10 |  import {
+      at TransformPluginContext._formatLog (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:28998:43)
+      at TransformPluginContext.error (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:28995:14)
+      at normalizeUrl (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:27118:18)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:27176:32
+      at async Promise.all (index 7)
+      at async TransformPluginContext.transform (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:27144:4)
+      at async EnvironmentPluginContainer.transform (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:28796:14)
+      at async loadAndTransform (file:///app/frontend/node_modules/vite/dist/node/chunks/config.js:22669:26)
+6:39:28 PM [vite] (client) Pre-transform error: Failed to resolve import "@/components/ui/button" from "src/components/Dashboard.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/Dashboard.vue:8:23
+  6  |  import TargetedSync from "./TargetedSync.vue";
+  7  |  import ActivityArchive from "./ActivityArchive.vue";
+  8  |  import { Button } from "@/components/ui/button";
+     |                          ^
+  9  |  import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+  10 |  import {
+6:39:28 PM [vite] (client) Pre-transform error: Failed to resolve import "@/components/ui/button" from "src/components/AddDeveloperForm.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/AddDeveloperForm.vue:4:23
+  2  |  import { ref } from "vue";
+  3  |  import { API_BASE_URL } from "../config";
+  4  |  import { Button } from "@/components/ui/button";
+     |                          ^
+  5  |  import {
+  6  |    Dialog,
+6:39:28 PM [vite] (client) Pre-transform error: Failed to resolve import "@/components/ui/button" from "src/components/RepositoryManager.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/RepositoryManager.vue:4:23
+  2  |  import { ref, onMounted } from "vue";
+  3  |  import { API_BASE_URL } from "../config";
+  4  |  import { Button } from "@/components/ui/button";
+     |                          ^
+  5  |  import {
+  6  |    Dialog,
+6:39:28 PM [vite] (client) Pre-transform error: Failed to resolve import "@/components/ui/button" from "src/components/TargetedSync.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/TargetedSync.vue:4:23
+  2  |  import { ref } from "vue";
+  3  |  import { API_BASE_URL } from "../config";
+  4  |  import { Button } from "@/components/ui/button";
+     |                          ^
+  5  |  import {
+  6  |    Dialog,
+6:39:29 PM [vite] (client) Pre-transform error: [@vue/compiler-sfc] Unresolvable type reference or unsupported built-in utility type
+
+/app/frontend/src/components/ui/calendar/CalendarNextButton.vue
+6  |  import { cn } from '@/lib/utils'
+7  |
+8  |  const props = defineProps<CalendarNextButtonProps & { class?: HTMLAttributes['class'] }>()
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^
+9  |
+10 |  const delegatedProps = computed(() => {
+  Plugin: vite:vue
+  File: /app/frontend/src/components/ui/calendar/CalendarNextButton.vue
+6:39:29 PM [vite] (client) Pre-transform error: [@vue/compiler-sfc] Unresolvable type reference or unsupported built-in utility type
+
+/app/frontend/src/components/ui/calendar/CalendarPrevButton.vue
+6  |  import { cn } from '@/lib/utils'
+7  |
+8  |  const props = defineProps<CalendarPrevButtonProps & { class?: HTMLAttributes['class'] }>()
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^
+9  |
+10 |  const delegatedProps = computed(() => {
+  Plugin: vite:vue
+  File: /app/frontend/src/components/ui/calendar/CalendarPrevButton.vue
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarCell.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarCell.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarCell } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarCell",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/Calendar.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/Calendar.vue:22:19
+  18 |    CalendarPrevButton
+  19 |  } from ".";
+  20 |  import { cn } from "@/lib/utils";
+     |                      ^
+  21 |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  22 |    __name: "Calendar",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarGridHead.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarGridHead.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarGridHead } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarGridHead",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarGrid.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarGrid.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarGrid } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarGrid",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarGridBody.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarGridBody.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarGridBody } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarGridBody",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/components/ui/button" from "src/components/ui/calendar/CalendarCellTrigger.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarCellTrigger.vue:4:31
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarCellTrigger } from "radix-vue";
+  4  |  import { buttonVariants } from "@/components/ui/button";
+     |                                  ^
+  5  |  import { cn } from "@/lib/utils";
+  6  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarHeadCell.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarHeadCell.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarHeadCell } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarHeadCell",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarGridRow.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarGridRow.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarGridRow } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarGridRow",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarHeading.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarHeading.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarHeading } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarHeading",
+6:39:29 PM [vite] (client) Pre-transform error: Failed to resolve import "@/lib/utils" from "src/components/ui/calendar/CalendarHeader.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /app/frontend/src/components/ui/calendar/CalendarHeader.vue:4:19
+  2  |  import { computed } from "vue";
+  3  |  import { CalendarHeader } from "radix-vue";
+  4  |  import { cn } from "@/lib/utils";
+     |                      ^
+  5  |  const _sfc_main = /* @__PURE__ */ _defineComponent({
+  6  |    __name: "CalendarHeader",
