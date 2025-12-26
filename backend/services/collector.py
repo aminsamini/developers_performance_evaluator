@@ -27,11 +27,13 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
     print(f"--- Syncing metrics for {target_date} (Optimize={optimize}) ---")
 
     for dev in developers:
-        # Check existing metric first
-        metric = db.query(Metric).filter(
+        # Check existing metric first - get ALL to handle potential duplicates
+        existing_metrics = db.query(Metric).filter(
             Metric.developer_id == dev.id, 
             Metric.date == target_date
-        ).first()
+        ).all()
+        
+        metric = existing_metrics[0] if existing_metrics else None
 
         # Check if the existing data is "finalized"
         is_finalized = False
@@ -39,18 +41,27 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             is_finalized = (metric.updated_at.date() > target_date)
 
         # STRICT OPTIMIZATION Rule #1:
-        # "if there is a record even if its 0 there is no need to check again, just check the date with the updated_at date"
-        # Implication: If is_finalized is True, we TRUST the data (even if 0), so we SKIP.
         if optimize and metric and is_finalized:
              print(f"  [Skipping] {dev.name} for {target_date} (Finalized & Strict Optimization)")
+             # ... append results ...
              results.append({
                 "developer": dev.name,
                 "date": target_date.isoformat(),
                 "commits": metric.commits_count,
                 "coding_time": f"{metric.coding_time_seconds//60} mins",
+                "start": metric.start_work_time,
+                "end": metric.end_work_time,
                 "score": metric.score
              })
              continue
+        
+        # Explicitly DELETE existing records if we are forcing a sync
+        if not optimize and existing_metrics:
+            print(f"  [Targeted Sync] Deleting {len(existing_metrics)} existing records for {dev.name} on {target_date} to ensure clean rewrite.")
+            for m in existing_metrics:
+                db.delete(m)
+            db.commit()
+            metric = None
         
         # If not finalized, or optimizations off, or no record -> We proceed to fetch.
         
@@ -104,6 +115,8 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                         target_date
                         # No allowed_projects passed -> returns grand_total
                     )
+                    
+                    print(f"DEBUG: Fetched WakaTime Grand Total for {dev.name}: {coding_seconds} seconds ({coding_seconds/60} mins)")
 
                     # B. Fetch Detailed Summary
                     summary = await wakatime_service.fetch_detailed_summary(dev.wakatime_api_key, target_date)
