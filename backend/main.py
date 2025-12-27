@@ -327,7 +327,8 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
             "total_score": sum(trend_scores),
             "total_commits": sum(trend_commits),
             "active_developers": len(developer_totals),
-            "days_tracked": len(daily_data)
+            "days_tracked": len(daily_data),
+            "repo_count": db.query(models.Repository).count()
         }
     }
 
