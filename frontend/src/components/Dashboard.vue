@@ -46,9 +46,10 @@ import {
   Filler,
   LineController,
   PolarAreaController,
-  RadarController
+  RadarController,
+  DoughnutController
 } from 'chart.js';
-import { Line, PolarArea, Radar } from 'vue-chartjs';
+import { Line, Doughnut, Radar } from 'vue-chartjs';
 
 // Register Chart.js components manually including Controllers
 ChartJS.register(
@@ -64,8 +65,24 @@ ChartJS.register(
     Filler,
     LineController,
     PolarAreaController,
-    RadarController
+    RadarController,
+    DoughnutController
 );
+
+// ...
+
+
+
+// ...
+
+
+
+// ...
+
+// In Template (Change PolarArea to Doughnut)
+// ...
+// <Doughnut :data="radialData" :options="radialOptions" />
+// ...
 
 interface MetricResult {
   developer: string;
@@ -186,7 +203,7 @@ const chartData = computed(() => ({
   ],
 }));
 
-// 2. Polar Area Data (Languages)
+// 2. Radial Data (Simulated Radial Bar using Doughnut)
 const radialData = computed(() => {
   const languageMap = new Map<string, number>();
   
@@ -211,33 +228,41 @@ const radialData = computed(() => {
       .slice(0, 5);
       
   const colors = [
-      'rgba(255, 99, 132, 0.7)',
-      'rgba(54, 162, 235, 0.7)',
-      'rgba(255, 206, 86, 0.7)',
-      'rgba(75, 192, 192, 0.7)',
-      'rgba(153, 102, 255, 0.7)',
+      'hsl(12, 76%, 61%)',
+      'hsl(173, 58%, 39%)',
+      'hsl(197, 37%, 24%)',
+      'hsl(43, 74%, 66%)',
+      'hsl(27, 87%, 67%)',
   ];
 
   if (sorted.length === 0) {
-      // Placeholder
-     return {
-         labels: ['Vue', 'TypeScript', 'PHP', 'Python', 'CSS'],
-         datasets: [{
-             data: [40, 25, 20, 10, 5],
-             backgroundColor: colors,
-             borderWidth: 1
-         }]
+     return { 
+         labels: ['No Data'], 
+         datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] 
      };
   }
 
+  // To simulate concentric rings (Radial Bar), we use multiple datasets in a Doughnut.
+  // We normalize values to max 100 for proper "bar" length relative to circle.
+  // Actually language percent sums to 100? No, we aggregated across days, so values can be huge.
+  // We need to normalize against the MAX value to make it fit 100 scale or just use raw if max is 100.
+  // Let's assume max is the highest value in map + 20%? 
+  // Or simply map absolute values but give "space" 
+  
+  const maxValue = Math.max(...sorted.map(s => s[1])) || 100;
+
   return {
     labels: sorted.map(s => s[0]),
-    datasets: [{
-      label: 'Usage %',
-      data: sorted.map(s => s[1]),
-      backgroundColor: colors.slice(0, sorted.length),
-      borderWidth: 1
-    }]
+    datasets: sorted.map((item, index) => ({
+      label: item[0],
+      data: [item[1], maxValue - item[1]], 
+      backgroundColor: [colors[index % colors.length], 'transparent'],
+      borderWidth: 0,
+      circumference: 360,
+      rotation: -90,
+      borderRadius: 5,
+      weight: 1 // Equal width rings
+    }))
   };
 });
 
@@ -252,12 +277,12 @@ const radarData = computed(() => {
         datasets: [{
             label: 'Team Metrics',
             data: [activity, score, 85, 70, 90], // Mixed mock/real
-            backgroundColor: 'rgba(139, 92, 246, 0.2)',
-            borderColor: '#8b5cf6',
-            pointBackgroundColor: '#8b5cf6',
+            backgroundColor: 'hsla(12, 76%, 61%, 0.2)',
+            borderColor: 'hsl(12, 76%, 61%)',
+            pointBackgroundColor: 'hsl(12, 76%, 61%)',
             pointBorderColor: '#fff',
             pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: '#8b5cf6',
+            pointHoverBorderColor: 'hsl(12, 76%, 61%)',
             fill: true
         }]
     };
@@ -282,13 +307,12 @@ const chartOptions = {
 const radialOptions = {
     responsive: true,
     maintainAspectRatio: false,
-     plugins: {
-        legend: { position: 'right' as const, labels: { boxWidth: 10 } }
-    },
-    scales: {
-        r: {
-            grid: { color: 'rgba(0,0,0,0.1)' },
-            ticks: { display: false }
+    cutout: '40%', // Size of center hole
+    plugins: {
+        legend: { display: false },
+        tooltip: {
+            enabled: true,
+            filter: (item: any) => item.dataIndex === 0 // Show tooltip only for the value segment
         }
     }
 };
@@ -402,7 +426,7 @@ const radarOptions = {
             </CardHeader>
             <CardContent class="pb-2">
                 <div class="h-[250px] w-full">
-                    <PolarArea :data="radialData" :options="radialOptions" />
+                    <Doughnut :data="radialData" :options="radialOptions" />
                 </div>
             </CardContent>
             <div class="p-6 pt-0 flex w-full items-start gap-2 text-sm mt-auto">
@@ -484,7 +508,7 @@ const radarOptions = {
         <div class="flex-1 w-full min-h-0 relative p-4">
              <div class="w-full h-full">
                 <Line v-if="selectedChart === 'trend'" :data="chartData" :options="chartOptions" />
-                <PolarArea v-if="selectedChart === 'distribution'" :data="radialData" :options="radialOptions" />
+                <Doughnut v-if="selectedChart === 'distribution'" :data="radialData" :options="radialOptions" />
                 <Radar v-if="selectedChart === 'health'" :data="radarData" :options="radarOptions" />
              </div>
         </div>
