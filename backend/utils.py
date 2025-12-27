@@ -6,12 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_timezone():
-    tz_name = os.getenv("APP_TIMEZONE", "UTC")
-    try:
-        return pytz.timezone(tz_name)
-    except pytz.UnknownTimeZoneError:
-        print(f"Warning: Unknown timezone '{tz_name}', falling back to UTC")
-        return pytz.UTC
+    """
+    Always returns UTC to ensure database consistency.
+    The application stores everything in UTC (0.00 offset).
+    """
+    return pytz.UTC
 
 def get_current_time():
     """Returns current time in APP_TIMEZONE"""

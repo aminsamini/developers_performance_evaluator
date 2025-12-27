@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { API_BASE_URL } from '../config';
-import Card from 'primevue/card';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Dialog from 'primevue/dialog';
-import Message from 'primevue/message';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Plus } from 'lucide-vue-next'
 
 const repoName = ref('');
 const repoToken = ref('');
@@ -76,47 +86,59 @@ onMounted(fetchRepositories);
 
 <template>
     <Card class="h-full">
-        <template #title>Repositories</template>
-        <template #content>
-            <div class="mb-4">
-                 <Button label="Add Repository" icon="pi pi-plus" @click="visible = true" size="small" />
-            </div>
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle class="text-lg font-bold">Repositories</CardTitle>
+            <Dialog v-model:open="visible">
+                <DialogTrigger as-child>
+                    <Button size="sm">
+                        <Plus class="mr-2 h-4 w-4" /> Add Repo
+                    </Button>
+                </DialogTrigger>
+                <DialogContent class="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Add Repository</DialogTitle>
+                        <DialogDescription>
+                             Enter the repository name (owner/repo).
+                        </DialogDescription>
+                    </DialogHeader>
 
-            <Dialog v-model:visible="visible" header="Add Repository" :modal="true" class="w-full md:w-30rem">
-                <span class="p-text-secondary block mb-5">Enter the repository name (owner/repo).</span>
-                
-                <div class="flex flex-col gap-4 mb-4">
-                    <div class="flex flex-col gap-2">
-                        <label for="repoName" class="font-semibold text-sm">Repository</label>
-                        <InputText id="repoName" v-model="repoName" placeholder="owner/repo" class="w-full" />
+                    <div class="grid gap-4 py-4">
+                        <div class="grid grid-cols-4 items-center gap-4">
+                            <Label for="repoName" class="text-right">Repository</Label>
+                            <Input id="repoName" v-model="repoName" placeholder="owner/repo" class="col-span-3" />
+                        </div>
+                        <div class="grid grid-cols-4 items-center gap-4">
+                            <Label for="repoToken" class="text-right">Token</Label>
+                            <Input id="repoToken" type="password" v-model="repoToken" placeholder="Optional (private)" class="col-span-3" />
+                        </div>
                     </div>
-                    <div class="flex flex-col gap-2">
-                        <label for="repoToken" class="font-semibold text-sm">GitHub Token</label>
-                        <InputText id="repoToken" v-model="repoToken" type="password" placeholder="Optional (for private repos)" class="w-full" />
+
+                    <div v-if="message" class="mb-4">
+                        <Alert :variant="message.includes('Error') ? 'destructive' : 'default'">
+                            <AlertTitle>{{ message.includes('Error') ? 'Error' : 'Status' }}</AlertTitle>
+                            <AlertDescription>{{ message }}</AlertDescription>
+                        </Alert>
                     </div>
-                </div>
 
-                <div v-if="message" class="mb-4">
-                     <Message :severity="message.includes('Error') ? 'error' : 'success'" :closable="false">{{ message }}</Message>
-                </div>
-
-                <div class="flex justify-end gap-2">
-                    <Button label="Cancel" text severity="secondary" @click="visible = false" />
-                    <Button label="Add" @click="addRepository" :loading="loading" autofocus />
-                </div>
+                    <DialogFooter>
+                        <Button variant="secondary" @click="visible = false">Cancel</Button>
+                        <Button @click="addRepository" :loading="loading">Add</Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
-
+        </CardHeader>
+        <CardContent>
             <div v-if="repositories.length > 0">
-                <h3 class="text-sm font-semibold mb-2 text-gray-600">Tracked Repositories:</h3>
+                <h3 class="text-sm font-semibold mb-2 text-muted-foreground">Tracked Repositories:</h3>
                 <ul class="list-disc pl-5">
-                    <li v-for="repo in repositories" :key="repo.id" class="text-gray-800">
+                    <li v-for="repo in repositories" :key="repo.id" class="text-sm">
                         {{ repo.name }}
                     </li>
                 </ul>
             </div>
-            <div v-else class="text-sm text-gray-500 italic">
+            <div v-else class="text-sm text-muted-foreground italic">
                 No repositories added.
             </div>
-        </template>
+        </CardContent>
     </Card>
 </template>

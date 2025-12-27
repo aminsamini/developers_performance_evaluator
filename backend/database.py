@@ -7,7 +7,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Use DATABASE_URL from .env or default to sqlite
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./performance.db")
+# Determine the absolute path to the project root (one level up from this file)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "performance.db")
+
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
 # For SQLite, we need to disable the check_same_thread check
 connect_args = {"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}

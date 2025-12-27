@@ -237,8 +237,15 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             from ..utils import get_timezone
             from datetime import datetime
             tz = get_timezone()
-            metric.start_work_time = datetime.fromtimestamp(min_start_timestamp, tz).strftime("%H:%M") if min_start_timestamp else None
-            metric.end_work_time = datetime.fromtimestamp(max_end_timestamp, tz).strftime("%H:%M") if max_end_timestamp else None
+            metric.start_work_time = datetime.fromtimestamp(min_start_timestamp, tz) if min_start_timestamp else None
+            metric.end_work_time = datetime.fromtimestamp(max_end_timestamp, tz) if max_end_timestamp else None
+            
+            # Safety Check: Ensure Start <= End
+            if metric.start_work_time and metric.end_work_time:
+                if metric.start_work_time > metric.end_work_time:
+                    print(f"WARNING: Correcting inverted start/end for {dev.name}: {metric.start_work_time} > {metric.end_work_time}")
+                    # Swap them
+                    metric.start_work_time, metric.end_work_time = metric.end_work_time, metric.start_work_time
 
             metric.score = score
             

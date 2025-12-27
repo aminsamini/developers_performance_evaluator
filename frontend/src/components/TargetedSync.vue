@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { API_BASE_URL } from '../config';
-import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
-import Dropdown from 'primevue/dropdown';
-import Calendar from 'primevue/calendar';
-import Message from 'primevue/message';
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { RefreshCw } from 'lucide-vue-next'
 
 const developers = ref<{ id: number; name: string }[]>([]);
 const selectedDeveloper = ref<{ id: number; name: string } | null>(null);
@@ -13,6 +29,14 @@ const selectedDate = ref<Date | null>(null);
 const loading = ref(false);
 const message = ref('');
 const visible = ref(false);
+const selectedDeveloperName = ref<string>('');
+
+const onDeveloperSelect = (name: string) => {
+  const dev = developers.value.find((d) => d.name === name);
+  selectedDeveloper.value = dev || null;
+};
+
+
 
 const fetchDevelopers = async () => {
   try {
@@ -52,38 +76,69 @@ const handleSync = async () => {
   }
 };
 
-const onOpen = () => {
+watch(visible, (isOpen) => {
+  if (isOpen) {
     fetchDevelopers();
-};
+  }
+});
 </script>
 
 <template>
-    <div>
-        <Button label="Targeted Sync" icon="pi pi-sync" @click="visible = true" severity="secondary" outlined />
-        
-        <Dialog v-model:visible="visible" header="Targeted Sync" :modal="true" class="w-full md:w-30rem" @show="onOpen">
-            <span class="p-text-secondary block mb-5">Select a developer and/or a date to sync manually.</span>
-            
-            <div class="flex flex-col gap-4 mb-4">
-                <div class="flex flex-col gap-2">
-                    <label for="dev" class="font-semibold text-sm">Developer</label>
-                    <Dropdown id="dev" v-model="selectedDeveloper" :options="developers" optionLabel="name" placeholder="Select a Developer" class="w-full" showClear />
-                </div>
-                
-                <div class="flex flex-col gap-2">
-                    <label for="date" class="font-semibold text-sm">Date</label>
-                    <Calendar id="date" v-model="selectedDate" showIcon dateFormat="yy-mm-dd" placeholder="Select a specific date (optional)" class="w-full" />
-                </div>
-            </div>
+  <Dialog v-model:open="visible">
+    <DialogTrigger as-child>
+      <Button variant="outline" size="default">
+        <RefreshCw class="mr-2 h-4 w-4" /> Targeted Sync
+      </Button>
+    </DialogTrigger>
+    <DialogContent class="sm:max-w-[425px]">
+      <DialogHeader>
+        <DialogTitle>Targeted Sync</DialogTitle>
+        <DialogDescription>
+          Select a developer and/or a date to sync manually.
+        </DialogDescription>
+      </DialogHeader>
 
-            <div v-if="message" class="mb-4">
-                 <Message :severity="message.includes('Error') ? 'error' : 'success'" :closable="false">{{ message }}</Message>
-            </div>
+      <div class="grid gap-4 py-4">
+        <div class="grid flex-col gap-2">
+           <Label for="dev">Developer</Label>
+           <Select v-model="selectedDeveloperName" @update:modelValue="onDeveloperSelect">
+              <SelectTrigger>
+                <SelectValue placeholder="Select a Developer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="dev in developers" :key="dev.id" :value="dev.name">
+                  {{ dev.name }}
+                </SelectItem>
+              </SelectContent>
+           </Select>
+        </div>
 
-            <div class="flex justify-end gap-2">
-                <Button label="Cancel" text severity="secondary" @click="visible = false" />
-                <Button label="Sync" @click="handleSync" :loading="loading" autofocus />
-            </div>
-        </Dialog>
-    </div>
+        <div class="grid flex-col gap-2">
+           <Label for="date">Date</Label>
+           <!-- Native Date Input styled with Shadcn Input class for theme support -->
+           <Input 
+             id="date" 
+             type="date" 
+             :value="selectedDate ? selectedDate.toISOString().split('T')[0] : ''"
+             @input="(e: any) => selectedDate = e.target.value ? new Date(e.target.value) : null"
+           />
+        </div>
+      </div>
+
+      <div v-if="message" class="mb-4">
+         <Alert :variant="message.includes('Error') ? 'destructive' : 'default'">
+           <AlertTitle>{{ message.includes('Error') ? 'Error' : 'Status' }}</AlertTitle>
+           <AlertDescription>{{ message }}</AlertDescription>
+         </Alert>
+      </div>
+
+      <DialogFooter>
+         <Button variant="secondary" @click="visible = false">Cancel</Button>
+         <Button @click="handleSync" :disabled="loading">
+            <span v-if="loading">Syncing...</span>
+            <span v-else>Sync</span>
+         </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>

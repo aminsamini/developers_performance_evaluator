@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { API_BASE_URL } from '../config';
-import DataTable from 'primevue/datatable';
-import Column from 'primevue/column';
-import Card from 'primevue/card';
-import Message from 'primevue/message';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
 import DeveloperDayDetail from './DeveloperDayDetail.vue';
 
 interface DailyMetric {
@@ -36,7 +42,9 @@ const fetchHistory = async () => {
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch(`${API_BASE_URL}/metrics/`);
+    const response = await fetch(`${API_BASE_URL}/metrics/?t=${Date.now()}`, {
+      headers: { 'Cache-Control': 'no-cache' }
+    });
     if (!response.ok) throw new Error(await response.text());
     archiveData.value = await response.json();
   } catch (err) {
@@ -54,6 +62,40 @@ const openDetail = (item: DailyMetric, date: string) => {
   detailVisible.value = true;
 };
 
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric' });
+};
+
+// Timezone handling
+const props = defineProps<{
+  timezone?: string
+}>();
+
+const currentTimezone = computed(() => props.timezone || 'Asia/Tehran');
+
+const formatTimeInZone = (timeStr: string | null) => {
+  if (!timeStr) return '-';
+  
+  // Try to parse ISO string directly
+  const date = new Date(timeStr);
+  if (isNaN(date.getTime())) return timeStr;
+
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: currentTimezone.value
+    }).format(date);
+  } catch (e) {
+    console.error('Timezone error', e);
+    return timeStr;
+  }
+};
+
 onMounted(() => {
   fetchHistory();
 });
@@ -61,53 +103,60 @@ onMounted(() => {
 
 <template>
   <Card class="mt-8">
-    <template #title>Activity Archive (Last 30 Days)</template>
-    <template #subtitle>
-      <span class="text-sm text-gray-500">Click on any row to see detailed breakdown</span>
-    </template>
-    <template #content>
+    <CardHeader>
+      <CardTitle class="flex justify-between items-center">
+        <span>Activity Archive (Last 30 Days)</span>
+      </CardTitle>
+      <CardDescription>
+        Click on any row to see detailed breakdown
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
       <div v-if="loading" class="text-center p-4">Loading history...</div>
-      <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
+      <div v-if="error" class="p-4 mb-4 text-red-700 bg-red-100 rounded">{{ error }}</div>
       
       <div v-if="!loading && archiveData.length === 0" class="text-center text-gray-500">
         No historical data found.
       </div>
 
       <div v-for="day in archiveData" :key="day.date" class="mb-6 border-b pb-4 last:border-0">
-        <h3 class="text-lg font-semibold text-gray-700 mb-2">{{ new Date(day.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric' }) }}</h3>
-        <DataTable 
-          :value="day.items" 
-          size="small" 
-          stripedRows 
-          class="text-sm"
-          selectionMode="single"
-          @row-click="(e: { data: DailyMetric }) => openDetail(e.data, day.date)"
-          :rowHover="true"
-          :style="{ cursor: 'pointer' }"
-        >
-            <Column field="developer" header="Developer"></Column>
-            <Column field="commits" header="Commits"></Column>
-            <Column field="start" header="Start">
-                 <template #body="slotProps">
-                    {{ slotProps.data.start || '-' }}
-                 </template>
-            </Column>
-            <Column field="end" header="End">
-                 <template #body="slotProps">
-                    {{ slotProps.data.end || '-' }}
-                 </template>
-            </Column>
-            <Column field="coding_time" header="Duration"></Column>
-            <Column field="score" header="Score">
-                 <template #body="slotProps">
-                    <span class="font-bold" :class="slotProps.data.score > 50 ? 'text-green-600' : slotProps.data.score > 0 ? 'text-yellow-600' : 'text-gray-400'">
-                      {{ slotProps.data.score.toFixed(2) }}
-                    </span>
-                 </template>
-            </Column>
-        </DataTable>
+        <h3 class="text-lg font-semibold text-gray-700 mb-2">{{ formatDate(day.date) }}</h3>
+        
+        <div class="rounded-md border">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Developer</TableHead>
+                        <TableHead>Commits</TableHead>
+                        <TableHead>Start</TableHead>
+                        <TableHead>End</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Score</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow 
+                        v-for="item in day.items" 
+                        :key="item.developer" 
+                        class="cursor-pointer hover:bg-gray-50"
+                        @click="openDetail(item, day.date)"
+                    >
+                        <TableCell class="font-medium">{{ item.developer }}</TableCell>
+                        <TableCell>{{ item.commits }}</TableCell>
+                        <TableCell>{{ formatTimeInZone(item.start ?? null) }}</TableCell>
+                        <TableCell>{{ formatTimeInZone(item.end ?? null) }}</TableCell>
+                        <TableCell>{{ item.coding_time }}</TableCell>
+                        <TableCell>
+                            <span class="font-bold" :class="item.score > 50 ? 'text-green-600' : item.score > 0 ? 'text-yellow-600' : 'text-gray-400'">
+                                {{ item.score.toFixed(2) }}
+                            </span>
+                        </TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
       </div>
-    </template>
+    </CardContent>
   </Card>
 
   <!-- Detail Modal -->
