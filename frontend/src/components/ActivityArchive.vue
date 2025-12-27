@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { API_BASE_URL } from '../config';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -10,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button';
 import DeveloperDayDetail from './DeveloperDayDetail.vue';
 
 interface DailyMetric {
@@ -21,6 +22,7 @@ interface DailyMetric {
   start?: string;
   end?: string;
   score: number;
+  churn_score?: number;
 }
 
 interface DayArchive {
@@ -28,7 +30,15 @@ interface DayArchive {
   items: DailyMetric[];
 }
 
+interface Pagination {
+  page: number;
+  per_page: number;
+  total_days: number;
+  total_pages: number;
+}
+
 const archiveData = ref<DayArchive[]>([]);
+const pagination = ref<Pagination>({ page: 1, per_page: 7, total_days: 0, total_pages: 1 });
 const loading = ref(false);
 const error = ref('');
 
@@ -38,19 +48,27 @@ const selectedDeveloperId = ref<number | null>(null);
 const selectedDeveloperName = ref('');
 const selectedDate = ref('');
 
-const fetchHistory = async () => {
+const fetchHistory = async (page: number = 1) => {
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch(`${API_BASE_URL}/metrics/?t=${Date.now()}`, {
+    const response = await fetch(`${API_BASE_URL}/metrics/?page=${page}&per_page=7&t=${Date.now()}`, {
       headers: { 'Cache-Control': 'no-cache' }
     });
     if (!response.ok) throw new Error(await response.text());
-    archiveData.value = await response.json();
+    const result = await response.json();
+    archiveData.value = result.data || [];
+    pagination.value = result.pagination || { page: 1, per_page: 7, total_days: 0, total_pages: 1 };
   } catch (err) {
     error.value = `Failed to load history: ${err}`;
   } finally {
     loading.value = false;
+  }
+};
+
+const goToPage = (page: number) => {
+  if (page >= 1 && page <= pagination.value.total_pages) {
+    fetchHistory(page);
   }
 };
 
@@ -67,6 +85,15 @@ const formatDate = (dateStr: string) => {
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric' });
+};
+
+const getQualityGrade = (churnScore: number | undefined): string => {
+  if (churnScore === undefined || churnScore === null) return 'N/A';
+  if (churnScore <= 0.2) return 'A';
+  if (churnScore <= 0.4) return 'B';
+  if (churnScore <= 0.6) return 'C';
+  if (churnScore <= 0.8) return 'D';
+  return 'F';
 };
 
 // Timezone handling
@@ -97,7 +124,7 @@ const formatTimeInZone = (timeStr: string | null) => {
 };
 
 onMounted(() => {
-  fetchHistory();
+  fetchHistory(1);
 });
 </script>
 
@@ -105,7 +132,10 @@ onMounted(() => {
   <Card class="mt-8">
     <CardHeader>
       <CardTitle class="flex justify-between items-center">
-        <span>Activity Archive (Last 30 Days)</span>
+        <span>Activity Archive</span>
+        <span v-if="pagination.total_days > 0" class="text-sm font-normal text-muted-foreground">
+          {{ pagination.total_days }} days total
+        </span>
       </CardTitle>
       <CardDescription>
         Click on any row to see detailed breakdown
@@ -120,7 +150,7 @@ onMounted(() => {
       </div>
 
       <div v-for="day in archiveData" :key="day.date" class="mb-6 border-b pb-4 last:border-0">
-        <h3 class="text-lg font-semibold text-gray-700 mb-2">{{ formatDate(day.date) }}</h3>
+        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ formatDate(day.date) }}</h3>
         
         <div class="rounded-md border">
             <Table>
@@ -138,7 +168,7 @@ onMounted(() => {
                     <TableRow 
                         v-for="item in day.items" 
                         :key="item.developer" 
-                        class="cursor-pointer hover:bg-gray-50"
+                        class="cursor-pointer hover:bg-muted/50"
                         @click="openDetail(item, day.date)"
                     >
                         <TableCell class="font-medium">{{ item.developer }}</TableCell>
@@ -148,13 +178,43 @@ onMounted(() => {
                         <TableCell>{{ item.coding_time }}</TableCell>
                         <TableCell>
                             <span class="font-bold" :class="item.score > 50 ? 'text-green-600' : item.score > 0 ? 'text-yellow-600' : 'text-gray-400'">
-                                {{ item.score.toFixed(2) }}
+                                {{ item.score.toFixed(1) }}-{{ getQualityGrade(item.churn_score) }}
                             </span>
                         </TableCell>
                     </TableRow>
                 </TableBody>
             </Table>
         </div>
+      </div>
+
+      <!-- Pagination Controls -->
+      <div v-if="pagination.total_pages > 1" class="flex items-center justify-center gap-4 mt-6 pt-4 border-t">
+        <Button 
+          variant="outline" 
+          size="sm"
+          :disabled="pagination.page <= 1"
+          @click="goToPage(pagination.page - 1)"
+        >
+          <ChevronLeft class="h-4 w-4 mr-1" />
+          Previous
+        </Button>
+        
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-muted-foreground">Page</span>
+          <span class="font-medium">{{ pagination.page }}</span>
+          <span class="text-sm text-muted-foreground">of</span>
+          <span class="font-medium">{{ pagination.total_pages }}</span>
+        </div>
+        
+        <Button 
+          variant="outline" 
+          size="sm"
+          :disabled="pagination.page >= pagination.total_pages"
+          @click="goToPage(pagination.page + 1)"
+        >
+          Next
+          <ChevronRight class="h-4 w-4 ml-1" />
+        </Button>
       </div>
     </CardContent>
   </Card>

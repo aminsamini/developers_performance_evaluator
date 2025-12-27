@@ -148,9 +148,11 @@ const fetchExistingMetrics = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/metrics/`);
     if (!response.ok) throw new Error('Failed to fetch metrics');
-    const data = await response.json();
+    const result = await response.json();
+    // Handle new paginated response format
+    const data = result.data || result;
     if (data && data.length > 0) {
-       // Flatten all days items to support historical aggregation (Last 7-30 days)
+       // Flatten all days items to support historical aggregation
        metrics.value = data.flatMap((day: any) => day.items || []);
     }
   } catch (err) {

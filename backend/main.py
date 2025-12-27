@@ -143,19 +143,41 @@ async def sync_metrics(db: Session = Depends(database.get_db)):
     return {"status": "success", "results": results}
 
 @app.get("/metrics/")
-def get_metrics(days: int = 30, db: Session = Depends(database.get_db)):
+def get_metrics(page: int = 1, per_page: int = 7, db: Session = Depends(database.get_db)):
     """
-    Fetch historical metrics for the last N days.
+    Fetch historical metrics with pagination.
+    Returns 7 days per page by default.
     """
-    from datetime import date, timedelta
-    from .utils import get_current_time
+    from sqlalchemy import func
     
-    # Use timezone aware "today"
-    since_date = get_current_time().date() - timedelta(days=days)
+    # Get all unique dates (descending order)
+    unique_dates = db.query(models.Metric.date).distinct().order_by(models.Metric.date.desc()).all()
+    unique_dates = [d[0] for d in unique_dates]
     
-    # Fetch metrics joined with Developer info
+    # Calculate pagination
+    total_days = len(unique_dates)
+    total_pages = max(1, (total_days + per_page - 1) // per_page)  # Ceiling division
+    page = max(1, min(page, total_pages))  # Clamp page to valid range
+    
+    # Get dates for current page
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    page_dates = unique_dates[start_idx:end_idx]
+    
+    if not page_dates:
+        return {
+            "data": [],
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total_days": total_days,
+                "total_pages": total_pages
+            }
+        }
+    
+    # Fetch metrics for these dates
     metrics = db.query(models.Metric).join(models.Developer).filter(
-        models.Metric.date >= since_date
+        models.Metric.date.in_(page_dates)
     ).order_by(models.Metric.date.desc()).all()
     
     # Group by Date
@@ -176,19 +198,27 @@ def get_metrics(days: int = 30, db: Session = Depends(database.get_db)):
             "focus_ratio": m.project_focus_ratio,
             "switches": m.context_switches,
             "score": m.score,
+            "churn_score": m.churn_score,
             "details": m.wakatime_data
         })
     
-    # Return list of { date: "YYYY-MM-DD", items: [...] }
+    # Build result list sorted by date descending
     result_list = []
-    # Sort dates descending
     for d_str in sorted(grouped.keys(), reverse=True):
         result_list.append({
             "date": d_str,
             "items": grouped[d_str]
         })
-        
-    return result_list
+    
+    return {
+        "data": result_list,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total_days": total_days,
+            "total_pages": total_pages
+        }
+    }
 
 
 @app.get("/metrics/detail/{developer_id}/{date_str}")
