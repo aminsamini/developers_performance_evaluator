@@ -18,6 +18,7 @@ import TargetedSync from './TargetedSync.vue';
 import ActivityArchive from './ActivityArchive.vue';
 import TimezoneSelector from './TimezoneSelector.vue';
 import ThemeToggle from './ThemeToggle.vue';
+import ExportModal from './ExportModal.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -125,6 +126,7 @@ const metrics = ref<MetricResult[]>([]);
 const lastSync = ref<string>('');
 const selectedTimezone = ref('Asia/Tehran');
 const error = ref('');
+const developers = ref<{id: number, name: string}[]>([]);
 
 // Fetch Data
 const fetchExampleData = async () => {
@@ -162,8 +164,20 @@ const syncData = async () => {
     lastSync.value = new Date().toLocaleTimeString();
 };
 
+const fetchDevelopers = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/developers/`);
+    if (response.ok) {
+      developers.value = await response.json();
+    }
+  } catch (err) {
+    console.error('Error fetching developers:', err);
+  }
+};
+
 onMounted(() => {
   syncData();
+  fetchDevelopers();
 });
 
 // Chart Logic
@@ -368,6 +382,7 @@ const radarOptions = {
         <p class="text-muted-foreground">Team metrics, trends, and health analysis.</p>
       </div>
       <div class="flex items-center gap-2">
+         <ExportModal :developers="developers" />
          <ThemeToggle class="z-50 relative" />
          <TimezoneSelector @update:timezone="(tz: string) => selectedTimezone = tz" />
          <TargetedSync />

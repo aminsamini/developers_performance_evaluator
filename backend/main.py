@@ -1,9 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
+from typing import List
 from . import models, database
 from .services import collector
+from .services.export_service import ExportService
 from pydantic import BaseModel
 
 class DeveloperCreate(BaseModel):
@@ -332,3 +335,112 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
         }
     }
 
+
+class ExportRequest(BaseModel):
+    from_date: str  # YYYY-MM-DD
+    to_date: str    # YYYY-MM-DD
+    developer_ids: List[int]
+    format: str     # "excel" or "pdf"
+    include_charts: bool = True
+    include_summary: bool = True
+    group_by_developer: bool = False
+    include_raw_wakatime: bool = False
+
+@app.post("/export/report")
+async def export_report(request: ExportRequest, db: Session = Depends(database.get_db)):
+    """
+    Export performance report as Excel or PDF.
+    Validates date range (max 90 days), fetches data, generates file.
+    """
+    from datetime import datetime, timedelta
+    
+    # Validate dates
+    try:
+        from_dt = datetime.strptime(request.from_date, "%Y-%m-%d").date()
+        to_dt = datetime.strptime(request.to_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    if to_dt < from_dt:
+        raise HTTPException(status_code=400, detail="To date must be after or equal to from date")
+    
+    if (to_dt - from_dt).days > 90:
+        raise HTTPException(status_code=400, detail="Date range cannot exceed 90 days")
+    
+    if not request.developer_ids:
+        raise HTTPException(status_code=400, detail="At least one developer must be selected")
+    
+    if request.format not in ["excel", "pdf"]:
+        raise HTTPException(status_code=400, detail="Format must be 'excel' or 'pdf'")
+    
+    # Fetch metrics data
+    metrics = db.query(models.Metric).filter(
+        models.Metric.date >= from_dt,
+        models.Metric.date <= to_dt,
+        models.Metric.developer_id.in_(request.developer_ids)
+    ).order_by(models.Metric.date.asc()).all()
+    
+    # Build developers map
+    developers = db.query(models.Developer).filter(
+        models.Developer.id.in_(request.developer_ids)
+    ).all()
+    developers_map = {d.id: d.name for d in developers}
+    
+    # Convert metrics to dict format
+    metrics_data = []
+    for m in metrics:
+        metrics_data.append({
+            "developer_id": m.developer_id,
+            "date": m.date,
+            "commits_count": m.commits_count,
+            "lines_added": m.lines_added,
+            "lines_deleted": m.lines_deleted,
+            "files_modified": m.files_modified,
+            "churn_score": m.churn_score,
+            "coding_time_seconds": m.coding_time_seconds,
+            "active_coding_seconds": m.active_coding_seconds,
+            "deep_work_seconds": m.deep_work_seconds,
+            "project_focus_ratio": m.project_focus_ratio,
+            "context_switches": m.context_switches,
+            "review_count": m.review_count,
+            "start_work_time": m.start_work_time,
+            "end_work_time": m.end_work_time,
+            "score": m.score,
+            "updated_at": m.updated_at,
+            "wakatime_data": m.wakatime_data
+        })
+    
+    # Generate export file
+    export_service = ExportService()
+    
+    if request.format == "excel":
+        file_buffer = export_service.generate_excel(
+            metrics_data=metrics_data,
+            developers_map=developers_map,
+            from_date=request.from_date,
+            to_date=request.to_date,
+            include_charts=request.include_charts,
+            include_summary=request.include_summary,
+            group_by_developer=request.group_by_developer,
+            include_raw_wakatime=request.include_raw_wakatime
+        )
+        filename = f"performance_report_{request.from_date}_to_{request.to_date}.xlsx"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        file_buffer = export_service.generate_pdf(
+            metrics_data=metrics_data,
+            developers_map=developers_map,
+            from_date=request.from_date,
+            to_date=request.to_date,
+            include_charts=request.include_charts,
+            include_summary=request.include_summary,
+            group_by_developer=request.group_by_developer
+        )
+        filename = f"performance_report_{request.from_date}_to_{request.to_date}.pdf"
+        media_type = "application/pdf"
+    
+    return StreamingResponse(
+        file_buffer,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

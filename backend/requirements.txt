@@ -7,3 +7,6 @@ aiosqlite
 httpx
 pydantic
 pydantic-settings
+openpyxl
+reportlab
+matplotlib
