@@ -88,6 +88,8 @@ interface MetricResult {
   developer: string;
   developer_id?: number;
   commits: number;
+  lines_added?: number;
+  lines_deleted?: number;
   coding_time: string;
   start?: string;
   end?: string;
@@ -146,12 +148,8 @@ const fetchExistingMetrics = async () => {
     if (!response.ok) throw new Error('Failed to fetch metrics');
     const data = await response.json();
     if (data && data.length > 0) {
-       // Assuming data is Array of Days, take first one as latest for distribution?
-       // Actually user snippet showed "Activity Archive" list.
-       // We need recent metrics for "Activity Distribution".
-       // Let's flatten the last 7 days? Or just take the latest day.
-       // data[0] is likely the most recent day if sorted desc.
-       metrics.value = data[0]?.items || [];
+       // Flatten all days items to support historical aggregation (Last 7-30 days)
+       metrics.value = data.flatMap((day: any) => day.items || []);
     }
   } catch (err) {
     console.error('Error fetching metrics:', err);
@@ -203,61 +201,94 @@ const chartData = computed(() => ({
   ],
 }));
 
-// 2. Radial Data (Simulated Radial Bar using Doughnut)
+// 2. Radial Data (Aggregated KPI Metrics - 6 Rings)
 const radialData = computed(() => {
-  const languageMap = new Map<string, number>();
+  if (metrics.value.length === 0) {
+     return { labels: ['No Data'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] };
+  }
   
-  const getLanguages = (detailsStr: string) => {
-      try {
-          const det = JSON.parse(detailsStr);
-          return det.languages || [];
-      } catch { return []; }
-  };
+  const records = metrics.value;
+  const totalRecs = records.length;
 
-  metrics.value.forEach(m => {
-      const langs = getLanguages(m.details || '{}');
-      langs.forEach((l: any) => {
-          const val = languageMap.get(l.name) || 0;
-          languageMap.set(l.name, val + (Number(l.percent) || 0));
-      });
-  });
+  // 1. Coding Hours Average (Target 8h)
+  const totalCodingSec = records.reduce((sum, r) => {
+      const d = r.details ? JSON.parse(r.details) : {};
+      return sum + (d.grand_total?.total_seconds || 0);
+  }, 0);
+  const avgCodingHrs = (totalCodingSec / totalRecs) / 3600;
+  const codingPercent = Math.min((avgCodingHrs / 8) * 100, 100);
 
-  // Sort and take top 5
-  const sorted = Array.from(languageMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
+  // 2. Focus Average (Avg of Daily Top Project %)
+  const focusSum = records.reduce((sum, r) => {
+      const d = r.details ? JSON.parse(r.details) : {};
+      const total = d.grand_total?.total_seconds || 0;
+      if (total === 0 || !d.projects) return sum;
       
-  // User requested Sequence: Blue 300 -> 500 -> 600 -> 700 -> 800
-  const colors = [
-      '#93c5fd', // blue-300 (Chart 1)
-      '#3b82f6', // blue-500 (Chart 2)
-      '#2563eb', // blue-600 (Chart 3)
-      '#1d4ed8', // blue-700 (Chart 4)
-      '#1e40af', // blue-800 (Chart 5)
+      let maxP = 0;
+      (d.projects || []).forEach((p: any) => {
+          const pSec = p.total_seconds || (p.percent ? (p.percent/100 * total) : 0);
+          if (pSec > maxP) maxP = pSec;
+      });
+      return sum + ((maxP / total) * 100);
+  }, 0);
+  const avgFocus = focusSum / totalRecs;
+
+  // 3. Score Average (0-100)
+  const avgScore = records.reduce((sum, r) => sum + (r.score || 0), 0) / totalRecs;
+
+  // 4. Commit Consistency (% of days with > 0 commits)
+  const commitDays = records.filter(r => r.commits > 0).length;
+  const commitConsistency = (commitDays / totalRecs) * 100;
+
+  // 5. Code Quality (1 - Churn). Churn = DELETIONS / (ADDS + DELS). 
+  // If (add+del) == 0, is Quality 100%? Yes per user spec.
+  const qualitySum = records.reduce((sum, r) => {
+      const adds = r.lines_added || 0;
+      const dels = r.lines_deleted || 0;
+      const total = adds + dels;
+      if (total === 0) return sum + 100; // Perfect stability if no churn? Or ignore? User says 100.
+      const churn = dels / total;
+      return sum + ((1 - churn) * 100);
+  }, 0);
+  const avgQuality = qualitySum / totalRecs;
+
+  // 6. Active Days (% days with Coding > 0)
+  const activeCount = records.filter(r => {
+      const d = r.details ? JSON.parse(r.details) : {};
+      return (d.grand_total?.total_seconds || 0) > 0;
+  }).length;
+  const activeDaysPercent = (activeCount / totalRecs) * 100;
+
+  const chartColors = [
+      '#93c5fd', // Coding (Blue 300)
+      '#3b82f6', // Focus (Blue 500)
+      '#2563eb', // Score (Blue 600)
+      '#1d4ed8', // Consistency (Blue 700)
+      '#1e40af', // Quality (Blue 800)
+      '#1e3a8a', // Active (Blue 900)
   ];
 
-  if (sorted.length === 0) {
-     return { 
-         labels: ['No Data'], 
-         datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] 
-     };
-  }
-
-  // To simulate concentric rings (Radial Bar), we use multiple datasets in a Doughnut.
-  const maxValue = Math.max(...sorted.map(s => s[1])) || 100;
+  const ringData = [
+      { label: `${avgCodingHrs.toFixed(1)}h avg`, val: codingPercent },
+      { label: `${avgFocus.toFixed(0)}% avg focus`, val: avgFocus },
+      { label: `${avgScore.toFixed(1)} avg score`, val: avgScore },
+      { label: `${commitDays}/${totalRecs} days`, val: commitConsistency },
+      { label: `${avgQuality.toFixed(0)}% quality`, val: avgQuality },
+      { label: `${activeCount}/${totalRecs} active`, val: activeDaysPercent }
+  ];
 
   return {
-    labels: sorted.map(s => s[0]),
-    datasets: sorted.map((item, index) => ({
-      label: item[0],
-      data: [item[1], maxValue - item[1]], 
-      backgroundColor: [colors[index % colors.length], 'transparent'],
-      borderWidth: 0,
-      circumference: 360,
-      rotation: -90,
-      borderRadius: 5,
-      weight: 1 // Equal width rings
-    }))
+      labels: ringData.map(r => r.label),
+      datasets: ringData.map((r, i) => ({
+          label: r.label,
+          data: [r.val, 100 - r.val],
+          backgroundColor: [chartColors[i], 'transparent'],
+          borderWidth: 0,
+          circumference: 360,
+          rotation: -90,
+          borderRadius: 5,
+          weight: 1
+      }))
   };
 });
 
