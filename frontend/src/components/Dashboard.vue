@@ -3,7 +3,6 @@ import { ref, onMounted, computed } from 'vue';
 import { RefreshCw } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '../config';
-import AddDeveloperForm from './AddDeveloperForm.vue';
 import RepositoryManager from './RepositoryManager.vue';
 import TargetedSync from './TargetedSync.vue';
 import ActivityArchive from './ActivityArchive.vue';
@@ -121,8 +120,8 @@ const chartData = computed(() => ({
     {
       label: 'Team Score',
       data: summary.value?.trend.scores || [],
-      borderColor: 'hsl(var(--primary))',
-      backgroundColor: 'hsl(var(--primary) / 0.1)',
+      borderColor: 'hsl(var(--foreground))',
+      backgroundColor: 'hsl(var(--foreground) / 0.1)',
       fill: true,
       tension: 0.4
     },
@@ -143,6 +142,9 @@ const chartOptions = {
   plugins: {
     legend: {
       position: 'top' as const,
+      labels: {
+        color: 'hsl(var(--muted-foreground))'
+      }
     },
     title: {
       display: false
@@ -150,7 +152,21 @@ const chartOptions = {
   },
   scales: {
     y: {
-      beginAtZero: true
+      beginAtZero: true,
+      grid: {
+        color: 'hsl(var(--border))'
+      },
+      ticks: {
+        color: 'hsl(var(--muted-foreground))'
+      }
+    },
+    x: {
+      grid: {
+        color: 'hsl(var(--border))'
+      },
+      ticks: {
+        color: 'hsl(var(--muted-foreground))'
+      }
     }
   }
 };
@@ -340,8 +356,7 @@ const formatTimeInZone = (timeStr: string | null) => {
           </CardContent>
         </Card>
 
-        <RepositoryManager />
-        <AddDeveloperForm @developerDataChanged="syncData" />
+        <RepositoryManager @dataUpdated="syncData" />
       </div>
 
       <div class="md:col-span-2 flex flex-col gap-6">

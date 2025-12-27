@@ -15,15 +15,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus } from 'lucide-vue-next'
+import { Plus, GitBranch, Users } from 'lucide-vue-next'
+import AddDeveloperForm from './AddDeveloperForm.vue';
 
+const emit = defineEmits(['dataUpdated']);
+
+// Repository State
 const repoName = ref('');
 const repoToken = ref('');
 const repositories = ref<any[]>([]);
-const loading = ref(false);
-const message = ref('');
-const visible = ref(false); // Controls Dialog visibility
+const repoLoading = ref(false);
+const repoMessage = ref('');
+const repoDialogVisible = ref(false);
 
+// Developer State
+const developers = ref<any[]>([]);
+
+// Fetch Data
 const fetchRepositories = async () => {
     try {
         const res = await fetch(`${API_BASE_URL}/repositories/`);
@@ -31,6 +39,20 @@ const fetchRepositories = async () => {
     } catch (e) {
         console.error(e);
     }
+};
+
+const fetchDevelopers = async () => {
+    try {
+        const res = await fetch(`${API_BASE_URL}/developers/`);
+        developers.value = await res.json();
+    } catch (e) {
+        console.error(e);
+    }
+};
+
+const handleDevAdded = () => {
+    fetchDevelopers();
+    emit('dataUpdated');
 };
 
 const addRepository = async () => {
@@ -41,12 +63,12 @@ const addRepository = async () => {
     cleanName = cleanName.replace(/\.git$/, '');
 
     if (!cleanName.includes('/')) {
-        message.value = "Invalid format. Use 'owner/repo'.";
+        repoMessage.value = "Invalid format. Use 'owner/repo'.";
         return;
     }
 
-    loading.value = true;
-    message.value = '';
+    repoLoading.value = true;
+    repoMessage.value = '';
 
     try {
         const res = await fetch(`${API_BASE_URL}/repositories/`, {
@@ -68,77 +90,117 @@ const addRepository = async () => {
             }
         }
 
-        message.value = 'Repository added successfully!';
+        repoMessage.value = 'Repository added successfully!';
         repoName.value = '';
         repoToken.value = '';
         await fetchRepositories();
-        // Option: visible.value = false; // Auto close?
+        emit('dataUpdated');
     } catch (e: any) {
         console.error(e);
-        message.value = `Error: ${e.message}`;
+        repoMessage.value = `Error: ${e.message}`;
     } finally {
-        loading.value = false;
+        repoLoading.value = false;
     }
 };
 
-onMounted(fetchRepositories);
+onMounted(() => {
+    fetchRepositories();
+    fetchDevelopers();
+});
 </script>
 
 <template>
     <Card class="h-full">
-        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle class="text-lg font-bold">Repositories</CardTitle>
-            <Dialog v-model:open="visible">
-                <DialogTrigger as-child>
-                    <Button size="sm">
-                        <Plus class="mr-2 h-4 w-4" /> Add Repo
-                    </Button>
-                </DialogTrigger>
-                <DialogContent class="sm:max-w-[425px]">
-                    <DialogHeader>
-                        <DialogTitle>Add Repository</DialogTitle>
-                        <DialogDescription>
-                             Enter the repository name (owner/repo).
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div class="grid gap-4 py-4">
-                        <div class="grid grid-cols-4 items-center gap-4">
-                            <Label for="repoName" class="text-right">Repository</Label>
-                            <Input id="repoName" v-model="repoName" placeholder="owner/repo" class="col-span-3" />
-                        </div>
-                        <div class="grid grid-cols-4 items-center gap-4">
-                            <Label for="repoToken" class="text-right">Token</Label>
-                            <Input id="repoToken" type="password" v-model="repoToken" placeholder="Optional (private)" class="col-span-3" />
-                        </div>
-                    </div>
-
-                    <div v-if="message" class="mb-4">
-                        <Alert :variant="message.includes('Error') ? 'destructive' : 'default'">
-                            <AlertTitle>{{ message.includes('Error') ? 'Error' : 'Status' }}</AlertTitle>
-                            <AlertDescription>{{ message }}</AlertDescription>
-                        </Alert>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="secondary" @click="visible = false">Cancel</Button>
-                        <Button @click="addRepository" :loading="loading">Add</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+        <CardHeader class="pb-3">
+            <CardTitle class="text-xl font-bold flex items-center gap-2">
+                Settings
+            </CardTitle>
+            <CardDescription>Manage team members and tracked repositories</CardDescription>
         </CardHeader>
-        <CardContent>
-            <div v-if="repositories.length > 0">
-                <h3 class="text-sm font-semibold mb-2 text-muted-foreground">Tracked Repositories:</h3>
-                <ul class="list-disc pl-5">
-                    <li v-for="repo in repositories" :key="repo.id" class="text-sm">
-                        {{ repo.name }}
-                    </li>
-                </ul>
+        <CardContent class="grid gap-6">
+            
+            <!-- Developers Section -->
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-sm flex items-center gap-2">
+                        <Users class="w-4 h-4" /> Developers
+                    </h3>
+                    <AddDeveloperForm @developerDataChanged="handleDevAdded" />
+                </div>
+                
+                <div class="bg-muted/30 rounded-lg p-2 max-h-40 overflow-y-auto">
+                    <div v-if="developers.length > 0" class="space-y-1">
+                        <div v-for="dev in developers" :key="dev.id" class="text-sm px-2 py-1 bg-background rounded border flex justify-between items-center">
+                            <span class="font-medium">{{ dev.name }}</span>
+                            <!-- <span class="text-xs text-muted-foreground">{{ dev.git_username }}</span> -->
+                        </div>
+                    </div>
+                     <div v-else class="text-sm text-muted-foreground italic text-center py-2">
+                        No developers added.
+                    </div>
+                </div>
             </div>
-            <div v-else class="text-sm text-muted-foreground italic">
-                No repositories added.
+
+            <div class="border-t"></div>
+
+            <!-- Repositories Section -->
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-sm flex items-center gap-2">
+                         <GitBranch class="w-4 h-4" /> Repositories
+                    </h3>
+                    <Dialog v-model:open="repoDialogVisible">
+                        <DialogTrigger as-child>
+                            <Button size="sm" variant="outline">
+                                <Plus class="mr-2 h-4 w-4" /> Add Repo
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent class="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle>Add Repository</DialogTitle>
+                                <DialogDescription>
+                                     Enter the repository name (owner/repo).
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div class="grid gap-4 py-4">
+                                <div class="grid grid-cols-4 items-center gap-4">
+                                    <Label for="repoName" class="text-right">Repository</Label>
+                                    <Input id="repoName" v-model="repoName" placeholder="owner/repo" class="col-span-3" />
+                                </div>
+                                <div class="grid grid-cols-4 items-center gap-4">
+                                    <Label for="repoToken" class="text-right">Token</Label>
+                                    <Input id="repoToken" type="password" v-model="repoToken" placeholder="Optional (private)" class="col-span-3" />
+                                </div>
+                            </div>
+
+                            <div v-if="repoMessage" class="mb-4">
+                                <Alert :variant="repoMessage.includes('Error') ? 'destructive' : 'default'">
+                                    <AlertTitle>{{ repoMessage.includes('Error') ? 'Error' : 'Status' }}</AlertTitle>
+                                    <AlertDescription>{{ repoMessage }}</AlertDescription>
+                                </Alert>
+                            </div>
+
+                            <DialogFooter>
+                                <Button variant="secondary" @click="repoDialogVisible = false">Cancel</Button>
+                                <Button @click="addRepository" :loading="repoLoading">Add</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+
+                <div class="bg-muted/30 rounded-lg p-2 max-h-40 overflow-y-auto">
+                     <div v-if="repositories.length > 0" class="space-y-1">
+                        <div v-for="repo in repositories" :key="repo.id" class="text-sm px-2 py-1 bg-background rounded border">
+                            {{ repo.name }}
+                        </div>
+                    </div>
+                    <div v-else class="text-sm text-muted-foreground italic text-center py-2">
+                        No repositories added.
+                    </div>
+                </div>
             </div>
+
         </CardContent>
     </Card>
 </template>
