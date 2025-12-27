@@ -7,10 +7,15 @@ load_dotenv()
 
 def get_timezone():
     """
-    Always returns UTC to ensure database consistency.
-    The application stores everything in UTC (0.00 offset).
+    Returns the configured application timezone (APP_TIMEZONE).
+    Defaults to UTC if not set.
     """
-    return pytz.UTC
+    tz_str = os.getenv("APP_TIMEZONE", "UTC")
+    try:
+        return pytz.timezone(tz_str)
+    except pytz.UnknownTimeZoneError:
+        print(f"Warning: Unknown timezone {tz_str}, falling back to UTC")
+        return pytz.UTC
 
 def get_current_time():
     """Returns current time in APP_TIMEZONE"""

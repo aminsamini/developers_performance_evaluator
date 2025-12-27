@@ -28,15 +28,26 @@ class GitService:
         }
 
         async with httpx.AsyncClient() as client:
+            # Import get_timezone to handle User Timezone correctly
+            from ..utils import get_timezone
+            tz = get_timezone()
+            
+            # Construct Timezone-Aware Midnight
+            # e.g. 2023-12-25 -> 2023-12-25 00:00:00+03:30
+            # Use localize() for pytz timezones to handle clean offsets
+            naive_since = datetime.combine(since_date, datetime.min.time())
+            dt_since = tz.localize(naive_since)
             
             params = {
                 "author": username,
-                "since": since_date.isoformat(),
+                "since": dt_since.isoformat(),
                 "per_page": 100,
             }
             if until_date:
-                next_day = until_date + timedelta(days=1)
-                params["until"] = next_day.isoformat()
+                # End of the specific day (or start of next day in Local Time)
+                naive_until = datetime.combine(until_date + timedelta(days=1), datetime.min.time())
+                dt_until = tz.localize(naive_until)
+                params["until"] = dt_until.isoformat()
             
             try:
                 # 1. Get List of Commits (High Level)
