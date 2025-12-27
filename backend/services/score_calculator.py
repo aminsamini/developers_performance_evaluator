@@ -1,10 +1,16 @@
 """
 Score Calculator Module
 =======================
-Extracted and corrected scoring logic for developer performance evaluation.
+Implements a normalized 0-100 developer performance scoring system.
 
-The key fix: Score should be 0 when there's no work activity (no commits, no coding time).
-Previously, the stability bonus of 50 points was awarded even on inactive days.
+Scoring Components (Total 100 pts):
+1. Commits (10 pts)
+2. Lines Changed (10 pts)
+3. Files Modified (20 pts)
+4. Coding Time (20 pts)
+5. Code Stability (20 pts)
+6. Deep Work (10 pts)
+7. Project Focus (10 pts)
 """
 
 
@@ -20,49 +26,10 @@ def calculate_developer_score(
     context_switches: int
 ) -> float:
     """
-    Calculate developer performance score for a given day.
-    
-    Returns 0 if no work activity is detected (no commits AND no coding time AND no files modified).
-    This fixes the bug where inactive days would show 50 points due to the stability bonus.
-    
-    Score Components:
-    -----------------
-    1. Commits (Weight: 1 per commit)
-       - Low impact, encourages atomic commits
-    
-    2. Files Modified (Weight: 20 per file)
-       - Highest impact - indicates breadth/complexity of work
-    
-    3. Lines Changed (Weight: 0.05 per line)
-       - Volume bonus for additions + deletions
-    
-    4. Stability Bonus (Weight: up to 50)
-       - Formula: (1.0 - churn_score) * 50
-       - High churn (lots of deletions) reduces this bonus
-       - ONLY awarded when work activity exists
-    
-    5. Time Score (Composite):
-       - Active Coding: 5 pts/hr
-       - Deep Work (>1hr sessions): 10 pts/hr  
-       - Project Focus: up to 15 pts based on focus ratio
-       - Context Switch Penalty: -2 pts per switch
-    
-    Args:
-        commits: Number of commits for the day
-        files_modified: Number of unique files touched
-        lines_added: Total lines added
-        lines_deleted: Total lines deleted
-        churn_score: Ratio of deletions to total changes (0.0 - 1.0)
-        active_coding_seconds: Total active coding time in seconds
-        deep_work_seconds: Time spent in sessions > 1 hour
-        project_focus_ratio: Ratio of time on primary project (0.0 - 1.0)
-        context_switches: Number of project switches
-        
-    Returns:
-        float: Total performance score (0 if no activity)
+    Calculate developer performance score (0-100).
+    Returns 0 if no work activity is detected.
     """
-    # === CRITICAL BUG FIX ===
-    # Check for zero activity - don't award any points for days with no work
+    # === Zero Activity Rule ===
     has_work_activity = (
         commits > 0 or 
         active_coding_seconds > 0 or 
@@ -72,36 +39,47 @@ def calculate_developer_score(
     if not has_work_activity:
         return 0.0
     
-    # === Score Components (only calculated if work was done) ===
+    # === 1. Commits (Max 10) ===
+    # 1 point per commit, capped at 10
+    p_commits = min(commits * 1.0, 10.0)
     
-    # 1. Commit Score (low weight to discourage commit spam)
-    p_commits = commits * 1
+    # === 2. Lines Changed (Max 10) ===
+    # 1 point per 50 lines, capped at 10
+    total_lines = lines_added + lines_deleted
+    p_lines = min(total_lines / 50.0, 10.0)
     
-    # 2. Files Modified Score (high weight - indicates task complexity)
-    p_files = files_modified * 20
+    # === 3. Files Modified (Max 20) ===
+    # 2 points per file, capped at 20
+    p_files = min(files_modified * 2.0, 20.0)
     
-    # 3. Line Volume Score
-    p_lines = (lines_added + lines_deleted) * 0.05
+    # === 4. Coding Time (Max 20) ===
+    # 2.5 points per hour, capped at 20 (8 hours)
+    active_hours = active_coding_seconds / 3600.0
+    p_time = min(active_hours * 2.5, 20.0)
     
-    # 4. Stability Bonus (reward clean code with low churn)
-    p_stability = (1.0 - churn_score) * 50
+    # === 5. Code Stability (Max 20) ===
+    # Based on churn: max(1, 20 * (1 - churn))
+    # range 1-20
+    p_stability = max(1.0, 20.0 * (1.0 - churn_score))
     
-    # 5. Enhanced Time Score
-    active_hours = active_coding_seconds / 3600
-    deep_work_hours = deep_work_seconds / 3600
+    # === 6. Deep Work (Max 10) ===
+    # 2.5 points per hour, capped at 10 (4 hours)
+    deep_hours = deep_work_seconds / 3600.0
+    p_deep_work = min(deep_hours * 2.5, 10.0)
     
-    p_active_time = active_hours * 5
-    p_deep_work = deep_work_hours * 10
-    p_focus = project_focus_ratio * 15
-    p_switch_penalty = context_switches * 2
+    # === 7. Project Focus (Max 10) ===
+    # >0.9: 10 pts, 0.5-0.9: scaled, <0.5: 0 pts
+    if project_focus_ratio >= 0.9:
+        p_focus = 10.0
+    elif project_focus_ratio >= 0.5:
+        p_focus = (project_focus_ratio - 0.5) * 25.0
+    else:
+        p_focus = 0.0
+        
+    total_score = p_commits + p_lines + p_files + p_time + p_stability + p_deep_work + p_focus
     
-    # Time score can't go negative from penalties
-    p_time_score = max(0, p_active_time + p_deep_work + p_focus - p_switch_penalty)
-    
-    # === Total Score ===
-    total_score = p_commits + p_files + p_lines + p_stability + p_time_score
-    
-    return round(total_score, 2)
+    # Final Cap at 100 just in case floating point logic overshoots (unlikely with min/max caps)
+    return round(min(total_score, 100.0), 1)
 
 
 def get_score_breakdown(
@@ -116,11 +94,7 @@ def get_score_breakdown(
     context_switches: int
 ) -> dict:
     """
-    Get a detailed breakdown of score components for display in the UI.
-    Useful for the detailed day view.
-    
-    Returns:
-        dict: Breakdown of each score component
+    Get detailed breakdown for UI display.
     """
     has_work_activity = (
         commits > 0 or 
@@ -134,72 +108,38 @@ def get_score_breakdown(
             "has_activity": False,
             "components": {}
         }
+        
+    total_lines = lines_added + lines_deleted
+    active_hours = active_coding_seconds / 3600.0
+    deep_hours = deep_work_seconds / 3600.0
     
-    active_hours = active_coding_seconds / 3600
-    deep_work_hours = deep_work_seconds / 3600
+    # Logic repeats calculate_developer_score for components
+    p_commits = min(commits * 1.0, 10.0)
+    p_lines = min(total_lines / 50.0, 10.0)
+    p_files = min(files_modified * 2.0, 20.0)
+    p_time = min(active_hours * 2.5, 20.0)
+    p_stability = max(1.0, 20.0 * (1.0 - churn_score))
+    p_deep_work = min(deep_hours * 2.5, 10.0)
     
-    components = {
-        "commits": {
-            "value": commits,
-            "points": commits * 1,
-            "weight": 1
-        },
-        "files_modified": {
-            "value": files_modified,
-            "points": files_modified * 20,
-            "weight": 20
-        },
-        "lines_changed": {
-            "value": lines_added + lines_deleted,
-            "points": (lines_added + lines_deleted) * 0.05,
-            "weight": 0.05
-        },
-        "stability": {
-            "value": round(1.0 - churn_score, 2),
-            "points": (1.0 - churn_score) * 50,
-            "weight": 50
-        },
-        "active_coding": {
-            "value": round(active_hours, 2),
-            "points": active_hours * 5,
-            "weight": 5
-        },
-        "deep_work": {
-            "value": round(deep_work_hours, 2),
-            "points": deep_work_hours * 10,
-            "weight": 10
-        },
-        "project_focus": {
-            "value": project_focus_ratio,
-            "points": project_focus_ratio * 15,
-            "weight": 15
-        },
-        "context_switches": {
-            "value": context_switches,
-            "points": -context_switches * 2,
-            "weight": -2
-        }
-    }
-    
-    # Calculate time sub-score
-    time_score = max(0, 
-        components["active_coding"]["points"] + 
-        components["deep_work"]["points"] + 
-        components["project_focus"]["points"] + 
-        components["context_switches"]["points"]
-    )
-    
-    total = (
-        components["commits"]["points"] +
-        components["files_modified"]["points"] +
-        components["lines_changed"]["points"] +
-        components["stability"]["points"] +
-        time_score
-    )
+    if project_focus_ratio >= 0.9:
+        p_focus = 10.0
+    elif project_focus_ratio >= 0.5:
+        p_focus = (project_focus_ratio - 0.5) * 25.0
+    else:
+        p_focus = 0.0
+        
+    total = p_commits + p_lines + p_files + p_time + p_stability + p_deep_work + p_focus
     
     return {
-        "total": round(total, 2),
+        "total": round(min(total, 100.0), 1),
         "has_activity": True,
-        "time_score": round(time_score, 2),
-        "components": components
+        "components": {
+            "commits": {"value": commits, "points": round(p_commits, 1), "label": "Commits"},
+            "lines_changed": {"value": total_lines, "points": round(p_lines, 1), "label": "Lines Changed"},
+            "files_modified": {"value": files_modified, "points": round(p_files, 1), "label": "Files Modified"},
+            "coding_time": {"value": round(active_hours, 1), "points": round(p_time, 1), "label": "Coding Time"},
+            "code_stability": {"value": round((1-churn_score)*100, 0), "points": round(p_stability, 1), "label": "Code Stability"},
+            "deep_work": {"value": round(deep_hours, 1), "points": round(p_deep_work, 1), "label": "Deep Work"},
+            "project_focus": {"value": round(project_focus_ratio*100, 0), "points": round(p_focus, 1), "label": "Project Focus"}
+        }
     }

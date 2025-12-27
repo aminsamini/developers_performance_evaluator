@@ -1,108 +1,107 @@
-# Developer Evaluation Logic
+# Developer Performance Evaluation Logic
 
-This document describes how the Performance Optimizer application calculates scores for developers.
+## Core Philosophy: High-Standard Normalized Scoring (0-100)
+The scoring system is designed to evaluate developer productivity on a **normalized 0-100 scale**, based on high industry standards. It rewards deep work, complexity, and focus while penalizing churn and context switching.
 
-## Zero Activity Rule
+**Zero Activity Rule:** If a developer has zero commits, zero coding time, and zero file changes, the score is automatically **0**.
 
-> **IMPORTANT**: If a developer has no work activity for a day (0 commits, 0 coding time, 0 files modified), their score is **0**.
+### Score Interpretation Guide
+| Score Range | Interpretation | Description |
+|-------------|----------------|-------------|
+| **0** | No Activity | No commits, coding time, or file changes detected. |
+| **0 - 39** | Low Activity | Minimal contribution or mostly administrative day. |
+| **40 - 60** | Standard | A typical productive day meeting baseline expectations. |
+| **61 - 75** | Good | Above-average performance with solid contributions. |
+| **76 - 89** | High Performance | Strong coding day with significant complexity or volume. |
+| **90 - 100** | Exceptional | Top tier performance (rare, top 5% of days). |
 
-This prevents the "50-point inactive day" bug that previously occurred due to the stability bonus being awarded even when no work was done.
+---
 
-## Scoring Formula
+## Score Components (Total: 100 Points)
 
-The daily score focuses on **Quality**, **Stability**, and **Time Investment**.
+The total score is the sum of 7 distinct components, each capped at a maximum value to prevent any single metric from skewing the result.
 
-### Formula
-```
-IF no_activity THEN
-    Score = 0
-ELSE
-    Score = Commits + Files + Lines + Stability + TimeScore
-```
+### 1. Commits (Max 10 Points)
+*Encourages consistent, atomic contributions.*
+- **Formula:** `min(commits, 10)`
+- **Scale:** 1 point per commit.
+- **Cap:** 10 commits = 10 points.
 
-Where:
-- `Commits = count * 1`
-- `Files = files_modified * 20`
-- `Lines = (lines_added + lines_deleted) * 0.05`
-- `Stability = (1.0 - churn_score) * 50`
-- `TimeScore = max(0, ActiveTime + DeepWork + Focus - SwitchPenalty)`
+### 2. Lines Changed (Max 10 Points)
+*Rewards volume of work (additions + deletions).*
+- **Formula:** `min((additions + deletions) / 50, 10)`
+- **Scale:** 1 point per 50 lines changed.
+- **Cap:** 500+ lines = 10 points.
 
-### Score Components
+### 3. Files Modified (Max 20 Points) ⭐
+*Indicates breadth and complexity of the task.*
+- **Formula:** `min(files_modified * 2, 20)`
+- **Scale:** 2 points per file modified.
+- **Cap:** 10+ files = 20 points.
 
-| Component | Weight | Description |
-|-----------|--------|-------------|
-| Commits | 1 per commit | Low impact - encourages atomic commits |
-| Files Modified | 20 per file | **Highest impact** - indicates task breadth/complexity |
-| Lines Changed | 0.05 per line | Volume bonus for additions + deletions |
-| Stability Bonus | Up to 50 | Low churn (rework) = higher bonus |
-| Active Coding | 5 pts/hr | Time actively writing/editing code |
-| Deep Work | 10 pts/hr | Uninterrupted sessions > 1 hour |
-| Project Focus | Up to 15 | Ratio of time on primary project |
-| Context Switches | -2 per switch | Penalty for frequent task switching |
+### 4. Coding Time (Max 20 Points) ⭐
+*Measures active engagement with the codebase.*
+- **Formula:** `min(active_hours * 2.5, 20)`
+- **Scale:** 2.5 points per hour of active coding.
+- **Cap:** 8+ hours = 20 points (Full standard work day).
 
-### Churn Score Calculation
-```
-churn_score = lines_deleted / (lines_added + lines_deleted)
-```
-- High churn (>0.7) indicates mostly rewriting existing code
-- Low churn (<0.3) indicates primarily new code
+### 5. Code Stability (Max 20 Points) ⭐
+*Rewards clean code and low churn (writing code that stays).*
+- **Formula:** `max(1, 20 * (1 - churn_ratio))`
+- **Logic:**
+    - **Low Churn (0-10%):** ~20 points (Clean new code)
+    - **Medium Churn (50%):** 10 points (Refactoring/Iterating)
+    - **High Churn (80%+):** ~1-4 points (Excessive rewriting)
 
-## Example Calculations
+### 6. Deep Work (Max 10 Points)
+*Rewards long, uninterrupted coding sessions (≥ 90 mins).*
+- **Formula:** `min(deep_work_hours * 2.5, 10)`
+- **Scale:** 2.5 points per hour of deep work.
+- **Cap:** 4+ hours = 10 points.
 
-### Scenario 1: Day Off (No Activity)
-| Metric | Value |
-|--------|-------|
-| Commits | 0 |
-| Coding Time | 0h |
-| Files Modified | 0 |
-| **Score** | **0** |
+### 7. Project Focus (Max 10 Points)
+*Penalizes context switching and rewards focus on a primary project.*
+- **Formula:**
+    - If Focus Ratio ≥ 90%: **10 points**
+    - If Focus Ratio ≥ 50%: **Scaled linear** `(Ratio - 0.5) * 25`
+    - If Focus Ratio < 50%: **0 points**
 
-*Zero activity = zero score. No stability bonus is awarded.*
+---
 
-### Scenario 2: Light Review Day
-| Metric | Value | Points |
-|--------|-------|--------|
-| Commits | 1 | 1 × 1 = 1 |
-| Files Modified | 2 | 2 × 20 = 40 |
-| Lines Changed | 50 | 50 × 0.05 = 2.5 |
-| Churn Score | 0.2 | (1-0.2) × 50 = 40 |
-| Coding Time | 0.5h | 0.5 × 5 = 2.5 |
-| **Total Score** | | **~86** |
+## Example Scenarios
 
-### Scenario 3: Heavy Coding Day
-| Metric | Value | Points |
-|--------|-------|--------|
-| Commits | 5 | 5 × 1 = 5 |
-| Files Modified | 10 | 10 × 20 = 200 |
-| Lines Changed | 800 | 800 × 0.05 = 40 |
-| Churn Score | 0.1 | (1-0.1) × 50 = 45 |
-| Active Coding | 6h | 6 × 5 = 30 |
-| Deep Work | 4h | 4 × 10 = 40 |
-| Focus Ratio | 0.9 | 0.9 × 15 = 13.5 |
-| Switches | 3 | 3 × -2 = -6 |
-| **Total Score** | | **~368** |
+### Scenario A: The "Standard Productive" Day
+- **Activity:** 4 commits, 4 hours coding, 3 files touched, low churn.
+- **Score:**
+    - Commits: 4 pts
+    - Lines (200): 4 pts
+    - Files (3): 6 pts
+    - Time (4h): 10 pts
+    - Stability: 20 pts
+    - Deep Work (1h): 2.5 pts
+    - Focus (90%): 10 pts
+    - **Total:** **56.5** (Standard)
 
-## Data Reliability & Verification
+### Scenario B: The "Heavy Lifter" Day
+- **Activity:** 12 commits, 7 hours coding, 12 files touched, medium churn.
+- **Score:**
+    - Commits: 10 pts (capped)
+    - Lines (1000): 10 pts (capped)
+    - Files (12): 20 pts (capped)
+    - Time (7h): 17.5 pts
+    - Stability (30% churn): 14 pts
+    - Deep Work (3h): 7.5 pts
+    - Focus (95%): 10 pts
+    - **Total:** **89** (Exceptional)
 
-### Atomic Sync
-- Data is only saved if **both** GitHub and WakaTime data are successfully retrieved
-- API failures or network interruptions result in the record **not being updated**
-- Prevents partial or incorrect zero values
-
-### Finalization
-- Once a day has passed and data is synced (marked by `updated_at > date`), the record is "Finalized"
-- Finalized records are trusted and skipped in future syncs
-- Partial records are re-checked during the next sync
-
-### Zero Values
-A zero value (0 commits, 0h time) is considered valid **only if** the sync completed successfully without errors.
-
-## Industry Alignment
-
-This scoring system aligns with industry best practices for developer productivity measurement:
-
-1. **Quality over Quantity**: High weight on files modified, low weight on commits
-2. **Deep Work Recognition**: Bonus for uninterrupted focus sessions
-3. **Stability Reward**: Clean code with low churn is valued
-4. **Context Switch Awareness**: Encourages focused work on fewer projects
-5. **Transparent Calculation**: All components are visible and explainable
+### Scenario C: The "Refactor" Day (High Churn)
+- **Activity:** 2 commits, 5 hours coding, 2 files, 80% churn (deleting code).
+- **Score:**
+    - Commits: 2 pts
+    - Lines (500): 10 pts
+    - Files: 4 pts
+    - Time: 12.5 pts
+    - Stability (80% churn): 4 pts (High Penalty)
+    - Deep Work: 5 pts
+    - Focus: 10 pts
+    - **Total:** **47.5** (Standard, lower due to churn)

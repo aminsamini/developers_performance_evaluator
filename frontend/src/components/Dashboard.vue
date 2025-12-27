@@ -273,6 +273,10 @@ const formatTimeInZone = (timeStr: string | null) => {
   }
 };
 
+const refreshView = async () => {
+  await fetchSummary();
+  await fetchExistingMetrics();
+};
 </script>
 
 <template>
@@ -314,6 +318,8 @@ const formatTimeInZone = (timeStr: string | null) => {
         </CardContent>
       </Card>
     </div>
+
+    <ActivityArchive :timezone="selectedTimezone" />
 
     <!-- Performance Trend Chart -->
     <Card v-if="summary && summary.trend.labels.length > 0" class="mb-6">
@@ -368,7 +374,7 @@ const formatTimeInZone = (timeStr: string | null) => {
                         <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': loading }" />
                         Sync Data
                      </Button>
-                     <TargetedSync />
+                     <TargetedSync @dataUpdated="refreshView" />
                 </div>
             </CardHeader>
             <CardContent>
