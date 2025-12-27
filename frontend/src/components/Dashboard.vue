@@ -187,12 +187,12 @@ const chartData = computed(() => ({
     {
       label: 'Performance Score',
       data: summary.value?.trend.scores || [],
-      borderColor: '#8b5cf6', // Violet
+      borderColor: '#3b82f6', // blue-500
       backgroundColor: (context: any) => {
         const ctx = context.chart.ctx;
         const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(139, 92, 246, 0.5)');
-        gradient.addColorStop(1, 'rgba(139, 92, 246, 0.0)');
+        gradient.addColorStop(0, 'rgba(59, 130, 246, 0.5)'); // blue-500
+        gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
         return gradient;
       },
       tension: 0.4,
@@ -227,12 +227,13 @@ const radialData = computed(() => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
       
+  // User requested Sequence: Blue 300 -> 500 -> 600 -> 700 -> 800
   const colors = [
-      'hsl(12, 76%, 61%)',
-      'hsl(173, 58%, 39%)',
-      'hsl(197, 37%, 24%)',
-      'hsl(43, 74%, 66%)',
-      'hsl(27, 87%, 67%)',
+      '#93c5fd', // blue-300 (Chart 1)
+      '#3b82f6', // blue-500 (Chart 2)
+      '#2563eb', // blue-600 (Chart 3)
+      '#1d4ed8', // blue-700 (Chart 4)
+      '#1e40af', // blue-800 (Chart 5)
   ];
 
   if (sorted.length === 0) {
@@ -243,12 +244,6 @@ const radialData = computed(() => {
   }
 
   // To simulate concentric rings (Radial Bar), we use multiple datasets in a Doughnut.
-  // We normalize values to max 100 for proper "bar" length relative to circle.
-  // Actually language percent sums to 100? No, we aggregated across days, so values can be huge.
-  // We need to normalize against the MAX value to make it fit 100 scale or just use raw if max is 100.
-  // Let's assume max is the highest value in map + 20%? 
-  // Or simply map absolute values but give "space" 
-  
   const maxValue = Math.max(...sorted.map(s => s[1])) || 100;
 
   return {
@@ -277,12 +272,12 @@ const radarData = computed(() => {
         datasets: [{
             label: 'Team Metrics',
             data: [activity, score, 85, 70, 90], // Mixed mock/real
-            backgroundColor: 'hsla(12, 76%, 61%, 0.2)',
-            borderColor: 'hsl(12, 76%, 61%)',
-            pointBackgroundColor: 'hsl(12, 76%, 61%)',
+            backgroundColor: 'rgba(59, 130, 246, 0.2)', // blue-500 @ 20%
+            borderColor: '#3b82f6', // blue-500
+            pointBackgroundColor: '#3b82f6',
             pointBorderColor: '#fff',
             pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: 'hsl(12, 76%, 61%)',
+            pointHoverBorderColor: '#3b82f6',
             fill: true
         }]
     };
