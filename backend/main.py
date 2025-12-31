@@ -350,29 +350,34 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
     """
     Get aggregated metrics summary for dashboard charts.
     Returns data for performance trends and team overview.
-    Now includes previous week data for comparison.
+    Now includes previous week data aligned by day of week for comparison.
     """
     from datetime import date, timedelta
     from .utils import get_current_time
     from sqlalchemy import func
     
     today = get_current_time().date()
-    since_date = today - timedelta(days=days)
-    prev_week_start = today - timedelta(days=days*2)
-    prev_week_end = today - timedelta(days=days+1)
+    
+    # Calculate the last 7 days (today and 6 days before)
+    current_week_dates = [today - timedelta(days=i) for i in range(days-1, -1, -1)]
+    # Previous week: 7 days before current week
+    prev_week_dates = [d - timedelta(days=days) for d in current_week_dates]
+    
+    # Weekday labels (short names)
+    weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     
     # Get all metrics in current range
     metrics = db.query(models.Metric).join(models.Developer).filter(
-        models.Metric.date >= since_date
+        models.Metric.date >= current_week_dates[0]
     ).all()
     
     # Get previous week metrics
     prev_metrics = db.query(models.Metric).join(models.Developer).filter(
-        models.Metric.date >= prev_week_start,
-        models.Metric.date <= prev_week_end
+        models.Metric.date >= prev_week_dates[0],
+        models.Metric.date <= prev_week_dates[-1]
     ).all()
     
-    # Daily totals for current week trend chart
+    # Daily totals for current week - indexed by date
     daily_data = {}
     developer_totals = {}
     
@@ -382,7 +387,7 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
         
         # Daily aggregation
         if d_str not in daily_data:
-            daily_data[d_str] = {"total_score": 0, "total_commits": 0, "total_coding_mins": 0, "count": 0}
+            daily_data[d_str] = {"total_score": 0, "total_commits": 0, "total_coding_mins": 0, "count": 0, "date_obj": m.date}
         daily_data[d_str]["total_score"] += m.score or 0
         daily_data[d_str]["total_commits"] += m.commits_count or 0
         daily_data[d_str]["total_coding_mins"] += (m.coding_time_seconds or 0) // 60
@@ -396,23 +401,44 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
         if (m.commits_count or 0) > 0 or (m.active_coding_seconds or 0) > 0:
             developer_totals[dev_name]["days_active"] += 1
     
-    # Previous week daily totals
+    # Previous week daily totals - indexed by date
     prev_daily_data = {}
     for m in prev_metrics:
         d_str = m.date.isoformat()
         if d_str not in prev_daily_data:
-            prev_daily_data[d_str] = {"total_score": 0, "count": 0}
+            prev_daily_data[d_str] = {"total_score": 0, "count": 0, "date_obj": m.date}
         prev_daily_data[d_str]["total_score"] += m.score or 0
         prev_daily_data[d_str]["count"] += 1
     
-    # Format for charts - current week
-    trend_labels = sorted(daily_data.keys())
-    trend_scores = [round(daily_data[d]["total_score"], 1) for d in trend_labels]
-    trend_commits = [daily_data[d]["total_commits"] for d in trend_labels]
+    # Build aligned arrays by day of week position
+    trend_labels = []
+    trend_scores = []
+    trend_commits = []
+    prev_trend_scores = []
     
-    # Format previous week - align by day of week (same indices)
-    prev_trend_labels = sorted(prev_daily_data.keys())
-    prev_trend_scores = [round(prev_daily_data[d]["total_score"], 1) for d in prev_trend_labels]
+    for i, curr_date in enumerate(current_week_dates):
+        prev_date = prev_week_dates[i]
+        
+        # Label: "Mon 12/30" format
+        weekday_label = weekday_names[curr_date.weekday()]
+        label = f"{weekday_label} {curr_date.month}/{curr_date.day}"
+        trend_labels.append(label)
+        
+        # Current week data
+        curr_key = curr_date.isoformat()
+        if curr_key in daily_data:
+            trend_scores.append(round(daily_data[curr_key]["total_score"], 1))
+            trend_commits.append(daily_data[curr_key]["total_commits"])
+        else:
+            trend_scores.append(0)
+            trend_commits.append(0)
+        
+        # Previous week data (aligned by same weekday position)
+        prev_key = prev_date.isoformat()
+        if prev_key in prev_daily_data:
+            prev_trend_scores.append(round(prev_daily_data[prev_key]["total_score"], 1))
+        else:
+            prev_trend_scores.append(0)
     
     # Developer leaderboard
     leaderboard = [
@@ -426,7 +452,6 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
             "labels": trend_labels,
             "scores": trend_scores,
             "commits": trend_commits,
-            "prev_labels": prev_trend_labels,
             "prev_scores": prev_trend_scores
         },
         "leaderboard": leaderboard,
@@ -434,7 +459,7 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
             "total_score": sum(trend_scores),
             "total_commits": sum(trend_commits),
             "active_developers": len(developer_totals),
-            "days_tracked": len(daily_data),
+            "days_tracked": len([s for s in trend_scores if s > 0]),
             "repo_count": db.query(models.Repository).count()
         }
     }
