@@ -143,15 +143,55 @@ async def sync_metrics(db: Session = Depends(database.get_db)):
     return {"status": "success", "results": results}
 
 @app.get("/metrics/")
-def get_metrics(page: int = 1, per_page: int = 7, db: Session = Depends(database.get_db)):
+def get_metrics(
+    page: int = 1, 
+    per_page: int = 7, 
+    developer_id: int = None,
+    date_from: str = None,
+    date_to: str = None,
+    score_min: float = None,
+    score_max: float = None,
+    db: Session = Depends(database.get_db)
+):
     """
-    Fetch historical metrics with pagination.
-    Returns 7 days per page by default.
+    Fetch historical metrics with pagination and optional filters.
+    - developer_id: Filter by specific developer
+    - date_from/date_to: Filter by date range (YYYY-MM-DD)
+    - score_min/score_max: Filter by score range
     """
     from sqlalchemy import func
+    from datetime import datetime
     
-    # Get all unique dates (descending order)
-    unique_dates = db.query(models.Metric.date).distinct().order_by(models.Metric.date.desc()).all()
+    # Build base query for unique dates
+    date_query = db.query(models.Metric.date).distinct()
+    
+    # Apply developer filter if specified
+    if developer_id:
+        date_query = date_query.filter(models.Metric.developer_id == developer_id)
+    
+    # Apply date range filters
+    if date_from:
+        try:
+            from_dt = datetime.strptime(date_from, "%Y-%m-%d").date()
+            date_query = date_query.filter(models.Metric.date >= from_dt)
+        except ValueError:
+            pass
+    
+    if date_to:
+        try:
+            to_dt = datetime.strptime(date_to, "%Y-%m-%d").date()
+            date_query = date_query.filter(models.Metric.date <= to_dt)
+        except ValueError:
+            pass
+    
+    # Apply score filters to date query
+    if score_min is not None:
+        date_query = date_query.filter(models.Metric.score >= score_min)
+    if score_max is not None:
+        date_query = date_query.filter(models.Metric.score <= score_max)
+    
+    # Get filtered unique dates (descending order)
+    unique_dates = date_query.order_by(models.Metric.date.desc()).all()
     unique_dates = [d[0] for d in unique_dates]
     
     # Calculate pagination
@@ -175,10 +215,20 @@ def get_metrics(page: int = 1, per_page: int = 7, db: Session = Depends(database
             }
         }
     
-    # Fetch metrics for these dates
-    metrics = db.query(models.Metric).join(models.Developer).filter(
+    # Build metrics query with filters
+    metrics_query = db.query(models.Metric).join(models.Developer).filter(
         models.Metric.date.in_(page_dates)
-    ).order_by(models.Metric.date.desc()).all()
+    )
+    
+    if developer_id:
+        metrics_query = metrics_query.filter(models.Metric.developer_id == developer_id)
+    
+    if score_min is not None:
+        metrics_query = metrics_query.filter(models.Metric.score >= score_min)
+    if score_max is not None:
+        metrics_query = metrics_query.filter(models.Metric.score <= score_max)
+    
+    metrics = metrics_query.order_by(models.Metric.date.desc()).all()
     
     # Group by Date
     grouped = {}
@@ -300,6 +350,7 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
     """
     Get aggregated metrics summary for dashboard charts.
     Returns data for performance trends and team overview.
+    Now includes previous week data for comparison.
     """
     from datetime import date, timedelta
     from .utils import get_current_time
@@ -307,13 +358,21 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
     
     today = get_current_time().date()
     since_date = today - timedelta(days=days)
+    prev_week_start = today - timedelta(days=days*2)
+    prev_week_end = today - timedelta(days=days+1)
     
-    # Get all metrics in range
+    # Get all metrics in current range
     metrics = db.query(models.Metric).join(models.Developer).filter(
         models.Metric.date >= since_date
     ).all()
     
-    # Daily totals for trend chart
+    # Get previous week metrics
+    prev_metrics = db.query(models.Metric).join(models.Developer).filter(
+        models.Metric.date >= prev_week_start,
+        models.Metric.date <= prev_week_end
+    ).all()
+    
+    # Daily totals for current week trend chart
     daily_data = {}
     developer_totals = {}
     
@@ -337,10 +396,23 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
         if (m.commits_count or 0) > 0 or (m.active_coding_seconds or 0) > 0:
             developer_totals[dev_name]["days_active"] += 1
     
-    # Format for charts
+    # Previous week daily totals
+    prev_daily_data = {}
+    for m in prev_metrics:
+        d_str = m.date.isoformat()
+        if d_str not in prev_daily_data:
+            prev_daily_data[d_str] = {"total_score": 0, "count": 0}
+        prev_daily_data[d_str]["total_score"] += m.score or 0
+        prev_daily_data[d_str]["count"] += 1
+    
+    # Format for charts - current week
     trend_labels = sorted(daily_data.keys())
     trend_scores = [round(daily_data[d]["total_score"], 1) for d in trend_labels]
     trend_commits = [daily_data[d]["total_commits"] for d in trend_labels]
+    
+    # Format previous week - align by day of week (same indices)
+    prev_trend_labels = sorted(prev_daily_data.keys())
+    prev_trend_scores = [round(prev_daily_data[d]["total_score"], 1) for d in prev_trend_labels]
     
     # Developer leaderboard
     leaderboard = [
@@ -353,7 +425,9 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
         "trend": {
             "labels": trend_labels,
             "scores": trend_scores,
-            "commits": trend_commits
+            "commits": trend_commits,
+            "prev_labels": prev_trend_labels,
+            "prev_scores": prev_trend_scores
         },
         "leaderboard": leaderboard,
         "totals": {

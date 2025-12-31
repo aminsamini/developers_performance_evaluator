@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { API_BASE_URL } from '../config';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -52,7 +52,26 @@ const fetchHistory = async (page: number = 1) => {
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch(`${API_BASE_URL}/metrics/?page=${page}&per_page=7&t=${Date.now()}`, {
+    let url = `${API_BASE_URL}/metrics/?page=${page}&per_page=7&t=${Date.now()}`;
+    
+    // Add filter params if set
+    if (props.developerId) {
+      url += `&developer_id=${props.developerId}`;
+    }
+    if (props.dateFrom) {
+      url += `&date_from=${props.dateFrom}`;
+    }
+    if (props.dateTo) {
+      url += `&date_to=${props.dateTo}`;
+    }
+    if (props.scoreMin !== undefined && props.scoreMin !== null && props.scoreMin !== '') {
+      url += `&score_min=${props.scoreMin}`;
+    }
+    if (props.scoreMax !== undefined && props.scoreMax !== null && props.scoreMax !== '') {
+      url += `&score_max=${props.scoreMax}`;
+    }
+    
+    const response = await fetch(url, {
       headers: { 'Cache-Control': 'no-cache' }
     });
     if (!response.ok) throw new Error(await response.text());
@@ -96,9 +115,14 @@ const getQualityGrade = (churnScore: number | undefined): string => {
   return 'F';
 };
 
-// Timezone handling
+// Timezone and filter props
 const props = defineProps<{
-  timezone?: string
+  timezone?: string;
+  developerId?: number | null;
+  dateFrom?: string;
+  dateTo?: string;
+  scoreMin?: number | string;
+  scoreMax?: number | string;
 }>();
 
 const currentTimezone = computed(() => props.timezone || 'Asia/Tehran');
@@ -122,6 +146,14 @@ const formatTimeInZone = (timeStr: string | null) => {
     return timeStr;
   }
 };
+
+// Watch for filter changes and refetch
+watch(
+  () => [props.developerId, props.dateFrom, props.dateTo, props.scoreMin, props.scoreMax],
+  () => {
+    fetchHistory(1);
+  }
+);
 
 onMounted(() => {
   fetchHistory(1);

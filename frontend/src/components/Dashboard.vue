@@ -9,7 +9,9 @@ import {
   Activity,
   GitCommit,
   Clock,
-  Archive
+  Archive,
+  Filter,
+  X
 } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '../config';
@@ -128,6 +130,29 @@ const selectedTimezone = ref('Asia/Tehran');
 const error = ref('');
 const developers = ref<{id: number, name: string}[]>([]);
 
+// Filter state for Activity Archive
+const filterDeveloperId = ref<number | null>(null);
+const filterDateFrom = ref('');
+const filterDateTo = ref('');
+const filterScoreMin = ref<number | ''>('');
+const filterScoreMax = ref<number | ''>('');
+
+const clearFilters = () => {
+  filterDeveloperId.value = null;
+  filterDateFrom.value = '';
+  filterDateTo.value = '';
+  filterScoreMin.value = '';
+  filterScoreMax.value = '';
+};
+
+const hasActiveFilters = computed(() => 
+  filterDeveloperId.value !== null || 
+  filterDateFrom.value !== '' || 
+  filterDateTo.value !== '' ||
+  filterScoreMin.value !== '' ||
+  filterScoreMax.value !== ''
+);
+
 // Fetch Data
 const fetchExampleData = async () => {
     // Fallback or Initial Data
@@ -194,12 +219,25 @@ const selectedChartTitle = computed(() => {
     }
 });
 
-// 1. Line Chart Data (Trend)
+// 1. Line Chart Data (Trend) - Now with previous week comparison
 const chartData = computed(() => ({
   labels: summary.value?.trend.labels || [],
   datasets: [
     {
-      label: 'Performance Score',
+      label: 'Previous Week',
+      data: summary.value?.trend.prev_scores || [],
+      borderColor: '#9ca3af', // gray-400
+      backgroundColor: 'rgba(156, 163, 175, 0.2)', // gray-400 with low opacity
+      tension: 0.4,
+      fill: true,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      borderWidth: 1,
+      borderDash: [5, 5],
+      order: 1  // Draw behind current week
+    },
+    {
+      label: 'This Week',
       data: summary.value?.trend.scores || [],
       borderColor: '#3b82f6', // blue-500
       backgroundColor: (context: any) => {
@@ -213,6 +251,8 @@ const chartData = computed(() => ({
       fill: true,
       pointRadius: 4,
       pointHoverRadius: 6,
+      borderWidth: 2,
+      order: 0  // Draw on top
     }
   ],
 }));
@@ -531,12 +571,92 @@ const radarOptions = {
           </CardContent>
         </Card>
 
+        <!-- Filter Section -->
+        <Card>
+          <CardHeader class="pb-3">
+            <CardTitle class="flex items-center gap-2 text-base">
+              <Filter class="h-4 w-4" />
+              Archive Filters
+            </CardTitle>
+            <CardDescription>Filter Activity Archive results</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Developer</label>
+              <select 
+                v-model="filterDeveloperId" 
+                class="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+              >
+                <option :value="null">All Developers</option>
+                <option v-for="dev in developers" :key="dev.id" :value="dev.id">
+                  {{ dev.name }}
+                </option>
+              </select>
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Date Range</label>
+              <div class="grid grid-cols-2 gap-2">
+                <input 
+                  type="date" 
+                  v-model="filterDateFrom"
+                  placeholder="From"
+                  class="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                />
+                <input 
+                  type="date" 
+                  v-model="filterDateTo"
+                  placeholder="To"
+                  class="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                />
+              </div>
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm font-medium">Score Range</label>
+              <div class="grid grid-cols-2 gap-2">
+                <input 
+                  type="number" 
+                  v-model="filterScoreMin"
+                  placeholder="Min (0)"
+                  min="0"
+                  max="100"
+                  class="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                />
+                <input 
+                  type="number" 
+                  v-model="filterScoreMax"
+                  placeholder="Max (100)"
+                  min="0"
+                  max="100"
+                  class="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                />
+              </div>
+            </div>
+            <Button 
+              v-if="hasActiveFilters"
+              variant="outline" 
+              size="sm" 
+              class="w-full" 
+              @click="clearFilters"
+            >
+              <X class="h-4 w-4 mr-2" />
+              Clear Filters
+            </Button>
+          </CardContent>
+        </Card>
+
         <RepositoryManager @dataUpdated="syncData" />
       </div>
 
       <!-- Activity Column -->
       <div class="md:col-span-2 flex flex-col gap-6">
-        <ActivityArchive :timezone="selectedTimezone" />
+        <ActivityArchive 
+          :timezone="selectedTimezone" 
+          :developer-id="filterDeveloperId"
+          :date-from="filterDateFrom"
+          :date-to="filterDateTo"
+          :score-min="filterScoreMin"
+          :score-max="filterScoreMax"
+        />
       </div>
     </div>
 
