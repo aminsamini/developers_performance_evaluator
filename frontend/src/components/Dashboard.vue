@@ -708,9 +708,14 @@ const radarOptions = {
   <div class="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
     <!-- Header -->
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight text-foreground">Performance Evaluator</h1>
-        <p class="text-muted-foreground">Team metrics, trends, and health analysis.</p>
+      <div class="flex items-center gap-4">
+        <div class="p-2 bg-primary/10 rounded-lg text-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-candlestick"><path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/></svg>
+        </div>
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight text-foreground">Performance Evaluator</h1>
+          <p class="text-muted-foreground">Team metrics, trends, and health analysis.</p>
+        </div>
       </div>
       <div class="flex items-center gap-2">
          <ExportModal :developers="developers" />
