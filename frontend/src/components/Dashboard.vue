@@ -215,16 +215,17 @@ onMounted(() => {
 const selectedChart = ref<string | null>(null);
 
 // Per-chart filter states
-const chartFilters = ref<Record<string, { days: number; developerId: number | null }>>({
+const chartFilters = ref<Record<string, { days: number; developerId: number | null; isComparison?: boolean; dateA?: string; dateB?: string; selectedFactors?: string[] }>>({
   trend: { days: 7, developerId: null },
   distribution: { days: 7, developerId: null },
-  health: { days: 7, developerId: null }
+  health: { days: 7, developerId: null, isComparison: false, dateA: new Date().toISOString().split('T')[0], dateB: new Date().toISOString().split('T')[0], selectedFactors: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'] }
 });
 
 // Per-chart data stores (separate from main summary)
 const chartData_trend = ref<any>(null);
 const chartData_distribution = ref<any>(null);
 const chartData_health = ref<any>(null);
+const chartData_health_compare = ref<any>(null); // For comparison mode
 
 // Current chart filter accessors
 const currentChartFilters = computed(() => {
@@ -235,19 +236,34 @@ const currentChartFilters = computed(() => {
 // Fetch data for a specific chart
 const fetchChartData = async (chartType: string) => {
   const filters = chartFilters.value[chartType];
+  const fetchForParams = async (params: string) => {
+      let url = `${API_BASE_URL}/metrics/summary?${params}`;
+      if (filters.developerId) url += `&developer_id=${filters.developerId}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch chart data');
+      return await res.json();
+  };
+
   try {
-    let url = `${API_BASE_URL}/metrics/summary?days=${filters.days}`;
-    if (filters.developerId) {
-      url += `&developer_id=${filters.developerId}`;
+    if (chartType === 'health' && filters.isComparison && filters.dateA && filters.dateB) {
+        // Fetch Parallel
+        const [dataA, dataB] = await Promise.all([
+            fetchForParams(`date_from=${filters.dateA}&date_to=${filters.dateA}`),
+            fetchForParams(`date_from=${filters.dateB}&date_to=${filters.dateB}`)
+        ]);
+        chartData_health.value = dataA;
+        chartData_health_compare.value = dataB;
+    } else {
+        // Normal Fetch
+        const data = await fetchForParams(`days=${filters.days}`);
+        
+        if (chartType === 'trend') chartData_trend.value = data;
+        else if (chartType === 'distribution') chartData_distribution.value = data;
+        else if (chartType === 'health') {
+            chartData_health.value = data;
+            chartData_health_compare.value = null; // Reset comparison
+        } 
     }
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch chart data');
-    const data = await response.json();
-    
-    // Store in per-chart data
-    if (chartType === 'trend') chartData_trend.value = data;
-    else if (chartType === 'distribution') chartData_distribution.value = data;
-    else if (chartType === 'health') chartData_health.value = data;
   } catch (err) {
     console.error(`Error fetching ${chartType} chart data:`, err);
   }
@@ -261,12 +277,28 @@ watch(selectedChart, (newChart) => {
 });
 
 // Update filter and refetch for current chart only
-const updateChartFilter = (field: 'days' | 'developerId', value: any) => {
+const updateChartFilter = (field: 'days' | 'developerId' | 'isComparison' | 'dateA' | 'dateB', value: any) => {
   const chart = selectedChart.value;
   if (chart) {
     chartFilters.value[chart][field] = value;
     fetchChartData(chart);
   }
+};
+
+const toggleChartFactor = (factor: string) => {
+    const filters = chartFilters.value['health'];
+    if (!filters) return;
+    if (!filters.selectedFactors) filters.selectedFactors = ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'];
+    
+    const idx = filters.selectedFactors.indexOf(factor);
+    if (idx === -1) {
+        filters.selectedFactors.push(factor);
+    } else {
+        // Prevent removing the last one (chart needs at least 1 dimension)
+        if (filters.selectedFactors.length > 1) {
+            filters.selectedFactors.splice(idx, 1);
+        }
+    }
 };
 
 // --- Summary Card Modal Logic ---
@@ -505,43 +537,81 @@ const radialData = computed(() => {
 
 // 3. Radar Data (Team Health) - Uses actual calculated metrics
 const radarData = computed(() => {
-  // Use per-chart data if available
-  const data = chartData_health.value || summary.value;
+  const calculateHealthMetrics = (data: any) => {
+      if (!data?.leaderboard || data.leaderboard.length === 0) return [0, 0, 0, 0, 0];
+      
+      const leaderboard = data.leaderboard;
+      const totals = data.totals || {};
+      
+      const avgScore = leaderboard.reduce((sum: number, d: any) => sum + (d.avg_score || 0), 0) / leaderboard.length;
+      const totalCommits = totals.total_commits || 0;
+      const activeDevelopers = totals.active_developers || leaderboard.length;
+      const daysTracked = totals.days_tracked || 1; // avoid div by 0
+      
+      // Normalized metrics (0-100)
+      const scoreHealth = Math.min(avgScore, 100); 
+      const commitHealth = Math.min((totalCommits / (activeDevelopers * 7 * 5)) * 100, 100); 
+      const consistencyHealth = Math.min((daysTracked / 7) * 100, 100); 
+      const teamHealth = Math.min((activeDevelopers / 5) * 100, 100); 
+      const coverageHealth = Math.min((leaderboard.filter((d: any) => d.days_active > 0).length / leaderboard.length) * 100, 100);
+      
+      return [scoreHealth, commitHealth, consistencyHealth, teamHealth, coverageHealth];
+  };
   
-  if (!data?.leaderboard || data.leaderboard.length === 0) {
-    return {
-      labels: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'],
-      datasets: [{
-        label: 'No Data',
-        data: [0, 0, 0, 0, 0],
-        backgroundColor: 'rgba(156, 163, 175, 0.2)',
-        borderColor: '#9ca3af',
-        fill: true
-      }]
-    };
+  // Fix: Define filters here
+  const filters = chartFilters.value.health;
+
+  // Filter Labels & Data based on selectedFactors
+  const allLabels = ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'];
+  const selectedLabels = (filters.selectedFactors && filters.selectedFactors.length > 0) 
+      ? filters.selectedFactors 
+      : allLabels;
+
+  const filterMetrics = (fullMetrics: number[]) => {
+       // Map full metric array to labels
+       const metricMap = new Map();
+       allLabels.forEach((label, idx) => metricMap.set(label, fullMetrics[idx]));
+       // Return only selected metrics
+       return selectedLabels.map(label => metricMap.get(label) || 0);
+  };
+
+  // COMPARISON MODE
+  if (filters.isComparison) {
+      const metricsA = calculateHealthMetrics(chartData_health.value);
+      const metricsB = calculateHealthMetrics(chartData_health_compare.value);
+      
+      return {
+          labels: selectedLabels,
+          datasets: [
+              {
+                  label: `Date: ${filters.dateA}`,
+                  data: filterMetrics(metricsA),
+                  backgroundColor: 'rgba(59, 130, 246, 0.2)', // blue
+                  borderColor: '#3b82f6',
+                  pointBackgroundColor: '#3b82f6',
+                  fill: true
+              },
+              {
+                  label: `Date: ${filters.dateB}`,
+                  data: filterMetrics(metricsB),
+                  backgroundColor: 'rgba(236, 72, 153, 0.2)', // pink
+                  borderColor: '#ec4899',
+                  pointBackgroundColor: '#ec4899',
+                  fill: true
+              }
+          ]
+      };
   }
-  
-  const leaderboard = data.leaderboard;
-  const totals = data.totals || {};
-  
-  // Calculate real health metrics (0-100 scale)
-  const avgScore = leaderboard.reduce((sum: number, d: any) => sum + (d.avg_score || 0), 0) / leaderboard.length;
-  const totalCommits = totals.total_commits || 0;
-  const activeDevelopers = totals.active_developers || leaderboard.length;
-  const daysTracked = totals.days_tracked || 0;
-  
-  // Normalized metrics (0-100)
-  const scoreHealth = Math.min(avgScore, 100); // Already 0-100
-  const commitHealth = Math.min((totalCommits / (activeDevelopers * 7 * 5)) * 100, 100); // vs 5 commits/dev/day
-  const consistencyHealth = Math.min((daysTracked / 7) * 100, 100); // Active days vs 7
-  const teamHealth = Math.min((activeDevelopers / 5) * 100, 100); // Team size vs target 5
-  const coverageHealth = Math.min((leaderboard.filter((d: any) => d.days_active > 0).length / leaderboard.length) * 100, 100);
+
+  // STANDARD MODE
+  const data = chartData_health.value || summary.value;
+  const metrics = calculateHealthMetrics(data);
   
   return {
-    labels: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'],
+    labels: selectedLabels,
     datasets: [{
       label: 'Team Health',
-      data: [scoreHealth, commitHealth, consistencyHealth, teamHealth, coverageHealth],
+      data: filterMetrics(metrics),
       backgroundColor: 'rgba(59, 130, 246, 0.2)', // blue-500 @ 20%
       borderColor: '#3b82f6', // blue-500
       pointBackgroundColor: '#3b82f6',
@@ -790,6 +860,44 @@ const radarOptions = {
           </CardContent>
         </Card>
 
+
+
+        <!-- Best Score Day Card -->
+        <Card v-if="summary?.best_day" class="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
+            <CardHeader class="pb-2">
+                <CardTitle class="flex items-center gap-2 text-primary">
+                    <Trophy class="h-5 w-5 text-amber-500" />
+                    Best Performance Day
+                </CardTitle>
+                <CardDescription>Highest scoring day in period</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div class="flex flex-col gap-4">
+                    <div class="flex items-baseline justify-between border-b pb-2">
+                         <div>
+                            <div class="text-2xl font-bold tracking-tight">{{ summary.best_day.date }}</div>
+                            <div class="text-sm text-muted-foreground font-medium">{{ summary.best_day.weekday }}</div>
+                         </div>
+                         <div class="text-right">
+                             <div class="text-xl font-bold text-primary">{{ summary.best_day.score?.toLocaleString() }} pts</div>
+                             <div class="text-xs text-muted-foreground">{{ summary.best_day.commits }} commits</div>
+                         </div>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-muted-foreground">Top Contributor:</span>
+                        <span class="font-medium flex items-center gap-1">
+                            <User class="h-3 w-3" /> {{ summary.best_day.top_contributor }}
+                        </span>
+                    </div>
+                    <!-- Small Active Devs Stat -->
+                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Active Developers:</span>
+                        <span>{{ summary.best_day.active_devs }} devs</span>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
         <!-- Filter Section -->
         <Card>
           <CardHeader class="pb-3">
@@ -892,7 +1000,20 @@ const radarOptions = {
         
         <!-- Chart Filters -->
         <div class="flex flex-wrap items-center gap-4 px-4 py-3 bg-muted/30 rounded-lg border">
-          <div class="flex items-center gap-2">
+          
+          <!-- Comparison Mode Toggle (Health Chart Only) -->
+          <div v-if="selectedChart === 'health'" class="flex items-center gap-2 mr-4 border-r pr-4">
+              <label class="text-sm font-medium whitespace-nowrap flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" 
+                         :checked="currentChartFilters.isComparison" 
+                         @change="updateChartFilter('isComparison', ($event.target as HTMLInputElement).checked)"
+                         class="rounded border-gray-300 text-primary shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50" />
+                  Comparison Mode
+              </label>
+          </div>
+
+          <!-- Time Period (Standard) -->
+          <div v-if="!currentChartFilters.isComparison" class="flex items-center gap-2">
             <label class="text-sm font-medium whitespace-nowrap">Time Period:</label>
             <select 
               :value="currentChartFilters.days" 
@@ -906,7 +1027,44 @@ const radarOptions = {
               <option :value="90">Last 90 Days</option>
             </select>
           </div>
-          <div class="flex items-center gap-2">
+
+          <!-- Date Comparison Pickers -->
+          <div v-else class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                  <label class="text-sm font-medium text-blue-600">Date A:</label>
+                  <input type="date" 
+                         :value="currentChartFilters.dateA" 
+                         @change="updateChartFilter('dateA', ($event.target as HTMLInputElement).value)"
+                         class="h-8 px-2 rounded-md border border-input bg-background text-sm" />
+              </div>
+              <div class="flex items-center gap-2">
+                  <label class="text-sm font-medium text-pink-600">Date B:</label>
+                  <input type="date" 
+                         :value="currentChartFilters.dateB" 
+                         @change="updateChartFilter('dateB', ($event.target as HTMLInputElement).value)"
+                         class="h-8 px-2 rounded-md border border-input bg-background text-sm" />
+              </div>
+          </div>
+          
+          <!-- Customizable Criteria (Health Only) -->
+          <div v-if="selectedChart === 'health'" class="flex flex-col sm:flex-row items-start sm:items-center gap-2 border-l pl-4 ml-2">
+            <span class="text-sm font-medium text-muted-foreground mr-1">Criteria:</span>
+            <div class="flex flex-wrap gap-2">
+                <label v-for="factor in ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage']" 
+                       :key="factor" 
+                       class="text-xs flex items-center gap-1.5 cursor-pointer px-2 py-1 rounded border transition-colors"
+                       :class="(currentChartFilters.selectedFactors || []).includes(factor) ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-background hover:bg-muted text-muted-foreground'"
+                >
+                    <input type="checkbox" 
+                        :checked="(currentChartFilters.selectedFactors || []).includes(factor)"
+                        @change="toggleChartFactor(factor)"
+                        class="rounded border-gray-300 text-primary h-3 w-3 focus:ring-0" />
+                    {{ factor }}
+                </label>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 ml-auto">
             <label class="text-sm font-medium whitespace-nowrap">Developer:</label>
             <select 
               :value="currentChartFilters.developerId"

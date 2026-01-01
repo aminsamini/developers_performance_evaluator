@@ -354,22 +354,52 @@ def get_repositories(db: Session = Depends(database.get_db)):
     return repos
 
 @app.get("/metrics/summary")
-def get_metrics_summary(days: int = 7, developer_id: int = None, db: Session = Depends(database.get_db)):
+def get_metrics_summary(
+    days: int = 7, 
+    developer_id: int = None, 
+    date_from: str = None,
+    date_to: str = None,
+    db: Session = Depends(database.get_db)
+):
     """
     Get aggregated metrics summary for dashboard charts.
     Returns data for performance trends and team overview.
     Now includes previous week data aligned by day of week for comparison.
+    Supports specific date range filtering via date_from/date_to.
     """
-    from datetime import date, timedelta
+    from datetime import date, timedelta, datetime
     from .utils import get_current_time
     from sqlalchemy import func
     
     today = get_current_time().date()
     
-    # Calculate the last 7 days (today and 6 days before)
-    current_week_dates = [today - timedelta(days=i) for i in range(days-1, -1, -1)]
-    # Previous week: 7 days before current week
-    prev_week_dates = [d - timedelta(days=days) for d in current_week_dates]
+    # Determine Date Range
+    if date_from and date_to:
+        try:
+             start_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+             end_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+             current_week_dates = []
+             delta = (end_date - start_date).days
+             for i in range(delta + 1):
+                 current_week_dates.append(start_date + timedelta(days=i))
+             
+             # For comparison/trend in custom range, we might just look at the exact range
+             # Previous period would be the same length immediately before
+             prev_start = start_date - timedelta(days=delta + 1)
+             prev_end = start_date - timedelta(days=1)
+             prev_week_dates = []
+             for i in range(delta + 1):
+                 prev_week_dates.append(prev_start + timedelta(days=i))
+                 
+        except ValueError:
+             # Fallback to default
+             current_week_dates = [today - timedelta(days=i) for i in range(days-1, -1, -1)]
+             prev_week_dates = [d - timedelta(days=days) for d in current_week_dates]
+    else:
+        # Calculate the last 7 days (today and 6 days before)
+        current_week_dates = [today - timedelta(days=i) for i in range(days-1, -1, -1)]
+        # Previous week: 7 days before current week
+        prev_week_dates = [d - timedelta(days=days) for d in current_week_dates]
     
     # Weekday labels (short names)
     weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -380,8 +410,14 @@ def get_metrics_summary(days: int = 7, developer_id: int = None, db: Session = D
         base_query = base_query.filter(models.Metric.developer_id == developer_id)
     
     # Get all metrics in current range
+    # Ensure current_week_dates is sorted for range validation
+    sorted_dates = sorted(current_week_dates)
+    if not sorted_dates: 
+         sorted_dates = [today] # Fallback
+         
     metrics = base_query.filter(
-        models.Metric.date >= current_week_dates[0]
+        models.Metric.date >= sorted_dates[0],
+        models.Metric.date <= sorted_dates[-1]
     ).all()
     
     # Get previous week metrics
@@ -464,6 +500,31 @@ def get_metrics_summary(days: int = 7, developer_id: int = None, db: Session = D
     ]
     leaderboard.sort(key=lambda x: x["total_score"], reverse=True)
     
+    # Calculate Best Day
+    best_day = None
+    if daily_data:
+        # Find day with max score
+        max_score_day = max(daily_data.values(), key=lambda x: x["total_score"])
+        
+        # Get details for that day
+        d_obj = max_score_day["date_obj"]
+        
+        # Find top contributor for that day
+        day_metrics = [m for m in metrics if m.date == d_obj]
+        top_dev_name = "None"
+        if day_metrics:
+            top_dev_metric = max(day_metrics, key=lambda m: m.score or 0)
+            top_dev_name = top_dev_metric.developer.name
+
+        best_day = {
+            "date": d_obj.isoformat(),
+            "weekday": d_obj.strftime("%A"),
+            "score": max_score_day["total_score"],
+            "commits": max_score_day["total_commits"],
+            "active_devs": max_score_day["count"],
+            "top_contributor": top_dev_name
+        }
+
     return {
         "trend": {
             "labels": trend_labels,
@@ -472,6 +533,7 @@ def get_metrics_summary(days: int = 7, developer_id: int = None, db: Session = D
             "prev_scores": prev_trend_scores
         },
         "leaderboard": leaderboard,
+        "best_day": best_day,
         "totals": {
             "total_score": sum(trend_scores),
             "total_commits": sum(trend_commits),

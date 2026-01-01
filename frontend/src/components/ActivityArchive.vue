@@ -214,6 +214,19 @@ onMounted(() => {
                             </span>
                         </TableCell>
                     </TableRow>
+                    <!-- Total Row -->
+                    <TableRow class="bg-muted font-bold hover:bg-muted">
+                        <TableCell>Total</TableCell>
+                        <TableCell>{{ day.items.reduce((sum, i) => sum + i.commits, 0) }}</TableCell>
+                        <TableCell>-</TableCell>
+                        <TableCell>-</TableCell>
+                        <TableCell>
+                            {{ day.items.reduce((sum, i) => sum + (parseInt(i.coding_time) || 0), 0) }} mins
+                        </TableCell>
+                        <TableCell>
+                            {{ day.items.reduce((sum, i) => sum + i.score, 0).toFixed(1) }}
+                        </TableCell>
+                    </TableRow>
                 </TableBody>
             </Table>
         </div>
