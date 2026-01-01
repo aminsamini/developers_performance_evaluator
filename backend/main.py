@@ -241,6 +241,8 @@ def get_metrics(
             "developer": m.developer.name,
             "developer_id": m.developer_id,
             "commits": m.commits_count,
+            "lines_added": m.lines_added,
+            "lines_deleted": m.lines_deleted,
             "coding_time": f"{m.coding_time_seconds // 60} mins",
             "start": m.start_work_time,
             "end": m.end_work_time,
@@ -345,8 +347,14 @@ def get_metric_detail(developer_id: int, date_str: str, db: Session = Depends(da
     }
 
 
+@app.get("/repositories")
+def get_repositories(db: Session = Depends(database.get_db)):
+    """Get all tracked repositories."""
+    repos = db.query(models.Repository).all()
+    return repos
+
 @app.get("/metrics/summary")
-def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
+def get_metrics_summary(days: int = 7, developer_id: int = None, db: Session = Depends(database.get_db)):
     """
     Get aggregated metrics summary for dashboard charts.
     Returns data for performance trends and team overview.
@@ -366,13 +374,22 @@ def get_metrics_summary(days: int = 7, db: Session = Depends(database.get_db)):
     # Weekday labels (short names)
     weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     
+    # Build base query with optional developer filter
+    base_query = db.query(models.Metric).join(models.Developer)
+    if developer_id:
+        base_query = base_query.filter(models.Metric.developer_id == developer_id)
+    
     # Get all metrics in current range
-    metrics = db.query(models.Metric).join(models.Developer).filter(
+    metrics = base_query.filter(
         models.Metric.date >= current_week_dates[0]
     ).all()
     
     # Get previous week metrics
-    prev_metrics = db.query(models.Metric).join(models.Developer).filter(
+    prev_base_query = db.query(models.Metric).join(models.Developer)
+    if developer_id:
+        prev_base_query = prev_base_query.filter(models.Metric.developer_id == developer_id)
+    
+    prev_metrics = prev_base_query.filter(
         models.Metric.date >= prev_week_dates[0],
         models.Metric.date <= prev_week_dates[-1]
     ).all()

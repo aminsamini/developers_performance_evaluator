@@ -158,9 +158,13 @@ const fetchExampleData = async () => {
     // Fallback or Initial Data
 };
 
-const fetchSummary = async () => {
+const fetchSummary = async (days: number = 7, developerId: number | null = null) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/metrics/summary`);
+    let url = `${API_BASE_URL}/metrics/summary?days=${days}`;
+    if (developerId) {
+      url += `&developer_id=${developerId}`;
+    }
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch summary');
     summary.value = await response.json();
   } catch (err) {
@@ -210,163 +214,378 @@ onMounted(() => {
 // Chart Logic
 const selectedChart = ref<string | null>(null);
 
+// Per-chart filter states
+const chartFilters = ref<Record<string, { days: number; developerId: number | null }>>({
+  trend: { days: 7, developerId: null },
+  distribution: { days: 7, developerId: null },
+  health: { days: 7, developerId: null }
+});
+
+// Per-chart data stores (separate from main summary)
+const chartData_trend = ref<any>(null);
+const chartData_distribution = ref<any>(null);
+const chartData_health = ref<any>(null);
+
+// Current chart filter accessors
+const currentChartFilters = computed(() => {
+  const chart = selectedChart.value || 'trend';
+  return chartFilters.value[chart] || { days: 7, developerId: null };
+});
+
+// Fetch data for a specific chart
+const fetchChartData = async (chartType: string) => {
+  const filters = chartFilters.value[chartType];
+  try {
+    let url = `${API_BASE_URL}/metrics/summary?days=${filters.days}`;
+    if (filters.developerId) {
+      url += `&developer_id=${filters.developerId}`;
+    }
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch chart data');
+    const data = await response.json();
+    
+    // Store in per-chart data
+    if (chartType === 'trend') chartData_trend.value = data;
+    else if (chartType === 'distribution') chartData_distribution.value = data;
+    else if (chartType === 'health') chartData_health.value = data;
+  } catch (err) {
+    console.error(`Error fetching ${chartType} chart data:`, err);
+  }
+};
+
+// When chart modal opens, fetch its data
+watch(selectedChart, (newChart) => {
+  if (newChart) {
+    fetchChartData(newChart);
+  }
+});
+
+// Update filter and refetch for current chart only
+const updateChartFilter = (field: 'days' | 'developerId', value: any) => {
+  const chart = selectedChart.value;
+  if (chart) {
+    chartFilters.value[chart][field] = value;
+    fetchChartData(chart);
+  }
+};
+
+// --- Summary Card Modal Logic ---
+const selectedSummary = ref<string | null>(null);
+const summaryDetails = ref<any[]>([]); // items for the list/table
+const summaryFilters = ref({
+  days: 30, // default to 30 days for details
+  developerId: null as number | null
+});
+
+const summaryModalTitle = computed(() => {
+    switch (selectedSummary.value) {
+        case 'commits': return 'Total Commits Details';
+        case 'developers': return 'Active Developers';
+        case 'repos': return 'Tracked Repositories';
+        case 'score': return 'Overall Score Breakdown';
+        default: return 'Details';
+    }
+});
+
+const summaryModalDescription = computed(() => {
+    switch (selectedSummary.value) {
+        case 'commits': return 'Detailed log of commits across all repositories.';
+        case 'developers': return 'List of developers contributing in the selected period.';
+        case 'repos': return 'All repositories currently being tracked and analyzed.';
+        case 'score': return 'Performance scores breakdown by developer.';
+        default: return 'View detailed metrics.';
+    }
+});
+
+const fetchSummaryDetails = async () => {
+    if (!selectedSummary.value) return;
+
+    try {
+        const type = selectedSummary.value;
+        const days = summaryFilters.value.days;
+        const devId = summaryFilters.value.developerId;
+
+        // Calculate date range
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - days);
+        const fromStr = startDate.toISOString().split('T')[0];
+        const toStr = endDate.toISOString().split('T')[0];
+
+        if (type === 'repos') {
+             // For repos, we just fetch the list. filtering by date/dev doesn't apply strictly to "tracked repos" existence,
+             // but maybe we could show which have activity. For now simple list.
+             const response = await fetch(`${API_BASE_URL}/repositories`);
+             if (response.ok) {
+                 summaryDetails.value = await response.json();
+             }
+        } else {
+             // For others, we use the metrics endpoint to get raw data
+             // We can use /metrics/ endpoint which lists all daily records
+             let url = `${API_BASE_URL}/metrics/?skip=0&limit=1000`; // Fetch enough rows
+             if (devId) url += `&developer_id=${devId}`;
+             url += `&date_from=${fromStr}&date_to=${toStr}`;
+
+             const response = await fetch(url);
+             if (response.ok) {
+                 const json = await response.json();
+                 // API returns { data: [ { date: '...', items: [...] } ], ... }
+                 // We need to flatten this into a single list of items with date attached
+                 const flatList: any[] = [];
+                 if (json.data && Array.isArray(json.data)) {
+                    json.data.forEach((group: any) => {
+                        if (group.items && Array.isArray(group.items)) {
+                            group.items.forEach((item: any) => {
+                                flatList.push({
+                                    ...item,
+                                    date: group.date,
+                                    // Map backend keys to what template expects if needed
+                                    commits_count: item.commits // Template expects item.commits_count? No wait template used commits_count in my previous view_file check? 
+                                    // Actually backend sends "commits", template was using "commits_count".
+                                    // Let's standardise on what backend sends or map it.
+                                    // Backend sends: commits, lines_added, lines_deleted, score, developer, developer_id
+                                });
+                            });
+                        }
+                    });
+                 }
+                 summaryDetails.value = flatList; 
+             }
+        }
+    } catch (err) {
+        console.error("Error fetching summary details:", err);
+        summaryDetails.value = [];
+    }
+};
+
+watch([selectedSummary, summaryFilters], () => {
+    if (selectedSummary.value) {
+        fetchSummaryDetails();
+    }
+}, { deep: true });
+
 const selectedChartTitle = computed(() => {
     switch (selectedChart.value) {
         case 'trend': return 'Performance Trend Analysis';
-        case 'distribution': return 'Activity & Language Distribution';
+        case 'distribution': return 'Developer Contribution';
         case 'health': return 'Team Health Radar';
         default: return 'Chart Details';
     }
 });
 
-// 1. Line Chart Data (Trend) - Now with previous week comparison
-const chartData = computed(() => ({
-  labels: summary.value?.trend.labels || [],
-  datasets: [
-    {
-      label: 'Previous Week',
-      data: summary.value?.trend.prev_scores || [],
-      borderColor: '#9ca3af', // gray-400
-      backgroundColor: 'rgba(156, 163, 175, 0.2)', // gray-400 with low opacity
-      tension: 0.4,
-      fill: true,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      borderWidth: 1,
-      borderDash: [5, 5],
-      order: 1  // Draw behind current week
-    },
-    {
-      label: 'This Week',
-      data: summary.value?.trend.scores || [],
-      borderColor: '#3b82f6', // blue-500
-      backgroundColor: (context: any) => {
-        const ctx = context.chart.ctx;
-        const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(59, 130, 246, 0.5)'); // blue-500
-        gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
-        return gradient;
-      },
-      tension: 0.4,
-      fill: true,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      borderWidth: 2,
-      order: 0  // Draw on top
+const selectedChartDescription = computed(() => {
+    switch (selectedChart.value) {
+        case 'trend': 
+            return 'Shows daily aggregated performance scores over time. Blue line represents this week, gray dashed line shows the previous week for comparison. Higher scores indicate better productivity.';
+        case 'distribution': 
+            return 'Breakdown of total performance score by developer. Shows the contribution of top performers relative to the team total, highlighting workload distribution.';
+        case 'health': 
+            return 'Radar chart showing team health across multiple dimensions: Score, Commits, Focus, Quality, Consistency, and Activity. Each axis represents how well the team performs in that area.';
+        default: 
+            return 'Detailed breakdown of metrics.';
     }
-  ],
-}));
+});
 
-// 2. Radial Data (Aggregated KPI Metrics - 6 Rings)
-const radialData = computed(() => {
-  if (metrics.value.length === 0) {
-     return { labels: ['No Data'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] };
-  }
-  
-  const records = metrics.value;
-  const totalRecs = records.length;
-
-  // 1. Coding Hours Average (Target 8h)
-  const totalCodingSec = records.reduce((sum, r) => {
-      const d = r.details ? JSON.parse(r.details) : {};
-      return sum + (d.grand_total?.total_seconds || 0);
-  }, 0);
-  const avgCodingHrs = (totalCodingSec / totalRecs) / 3600;
-  const codingPercent = Math.min((avgCodingHrs / 8) * 100, 100);
-
-  // 2. Focus Average (Avg of Daily Top Project %)
-  const focusSum = records.reduce((sum, r) => {
-      const d = r.details ? JSON.parse(r.details) : {};
-      const total = d.grand_total?.total_seconds || 0;
-      if (total === 0 || !d.projects) return sum;
-      
-      let maxP = 0;
-      (d.projects || []).forEach((p: any) => {
-          const pSec = p.total_seconds || (p.percent ? (p.percent/100 * total) : 0);
-          if (pSec > maxP) maxP = pSec;
-      });
-      return sum + ((maxP / total) * 100);
-  }, 0);
-  const avgFocus = focusSum / totalRecs;
-
-  // 3. Score Average (0-100)
-  const avgScore = records.reduce((sum, r) => sum + (r.score || 0), 0) / totalRecs;
-
-  // 4. Commit Consistency (% of days with > 0 commits)
-  const commitDays = records.filter(r => r.commits > 0).length;
-  const commitConsistency = (commitDays / totalRecs) * 100;
-
-  // 5. Code Quality (1 - Churn). Churn = DELETIONS / (ADDS + DELS). 
-  // If (add+del) == 0, is Quality 100%? Yes per user spec.
-  const qualitySum = records.reduce((sum, r) => {
-      const adds = r.lines_added || 0;
-      const dels = r.lines_deleted || 0;
-      const total = adds + dels;
-      if (total === 0) return sum + 100; // Perfect stability if no churn? Or ignore? User says 100.
-      const churn = dels / total;
-      return sum + ((1 - churn) * 100);
-  }, 0);
-  const avgQuality = qualitySum / totalRecs;
-
-  // 6. Active Days (% days with Coding > 0)
-  const activeCount = records.filter(r => {
-      const d = r.details ? JSON.parse(r.details) : {};
-      return (d.grand_total?.total_seconds || 0) > 0;
-  }).length;
-  const activeDaysPercent = (activeCount / totalRecs) * 100;
-
-  const chartColors = [
-      '#93c5fd', // Coding (Blue 300)
-      '#3b82f6', // Focus (Blue 500)
-      '#2563eb', // Score (Blue 600)
-      '#1d4ed8', // Consistency (Blue 700)
-      '#1e40af', // Quality (Blue 800)
-      '#1e3a8a', // Active (Blue 900)
-  ];
-
-  const ringData = [
-      { label: `${avgCodingHrs.toFixed(1)}h avg`, val: codingPercent },
-      { label: `${avgFocus.toFixed(0)}% avg focus`, val: avgFocus },
-      { label: `${avgScore.toFixed(1)} avg score`, val: avgScore },
-      { label: `${commitDays}/${totalRecs} days`, val: commitConsistency },
-      { label: `${avgQuality.toFixed(0)}% quality`, val: avgQuality },
-      { label: `${activeCount}/${totalRecs} active`, val: activeDaysPercent }
-  ];
-
+// 1. Line Chart Data (Trend) - Now with previous week comparison
+// Uses per-chart data when modal is open, otherwise uses main summary
+const chartData = computed(() => {
+  const data = chartData_trend.value || summary.value;
   return {
-      labels: ringData.map(r => r.label),
-      datasets: ringData.map((r, i) => ({
-          label: r.label,
-          data: [r.val, 100 - r.val],
-          backgroundColor: [chartColors[i], 'transparent'],
-          borderWidth: 0,
-          circumference: 360,
-          rotation: -90,
-          borderRadius: 5,
-          weight: 1
-      }))
+    labels: data?.trend?.labels || [],
+    datasets: [
+      {
+        label: 'Previous Week',
+        data: data?.trend?.prev_scores || [],
+        borderColor: '#9ca3af', // gray-400
+        backgroundColor: 'rgba(156, 163, 175, 0.2)', // gray-400 with low opacity
+        tension: 0.4,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 1,
+        borderDash: [5, 5],
+        order: 1  // Draw behind current week
+      },
+      {
+        label: 'This Week',
+        data: data?.trend?.scores || [],
+        borderColor: '#3b82f6', // blue-500
+        backgroundColor: (context: any) => {
+          const ctx = context.chart.ctx;
+          const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+          gradient.addColorStop(0, 'rgba(59, 130, 246, 0.5)'); // blue-500
+          gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+          return gradient;
+        },
+        tension: 0.4,
+        fill: true,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+        order: 0  // Draw on top
+      }
+    ],
   };
 });
 
-// 3. Radar Data (Health)
+// 2. Radial Data (Developer Contribution)
+// Shows share of Total Score by Top Developers
+const radialData = computed(() => {
+  // Use per-chart data if available, otherwise fall back to summary
+  const data = chartData_distribution.value || summary.value;
+  
+  if (!data?.leaderboard || data.leaderboard.length === 0) {
+    return { labels: ['No Data'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] };
+  }
+  
+  // Logic: Show Top 5 Developers + "Others"
+  // If filtered by developer, show "Selected Developer" vs "Rest of Team"
+  
+  const leaderboard = [...data.leaderboard].sort((a, b) => b.total_score - a.total_score);
+  const totalScore = data.totals?.total_score || leaderboard.reduce((sum, d) => sum + (d.total_score || 0), 0);
+  
+  // If no score at all
+  if (totalScore === 0) {
+      return { labels: ['No Activity'], datasets: [{ data: [1], backgroundColor: ['#f3f4f6'] }] };
+  }
+
+  let labels: string[] = [];
+  let values: number[] = [];
+  let colors: string[] = [];
+  
+  const palette = [
+    '#3b82f6', // blue-500
+    '#10b981', // green-500
+    '#8b5cf6', // purple-500
+    '#f59e0b', // amber-500
+    '#ec4899', // pink-500
+    '#6b7280'  // gray-500 (Others)
+  ];
+
+  const currentFilterDevId = currentChartFilters.value.developerId;
+
+  if (currentFilterDevId) {
+      // Filtered View: Selected Dev vs Others
+      const selectedDev = leaderboard.find(d => d.developer_id === currentFilterDevId || d.id === currentFilterDevId); // Handle inconsistency if any
+      const selectedName = selectedDev ? selectedDev.name : 'Selected Developer';
+      const selectedScore = selectedDev ? (selectedDev.total_score || 0) : 0;
+      const otherScore = totalScore - selectedScore;
+      
+      labels = [selectedName, 'Rest of Team'];
+      values = [selectedScore, otherScore];
+      colors = ['#3b82f6', '#e5e7eb']; // Highlight vs Gray
+  } else {
+      // Team View: Top 5 + Others
+      const top5 = leaderboard.slice(0, 5);
+      const others = leaderboard.slice(5);
+      
+      labels = top5.map(d => d.name);
+      values = top5.map(d => d.total_score || 0);
+      colors = palette.slice(0, top5.length);
+      
+      const othersScore = others.reduce((sum, d) => sum + (d.total_score || 0), 0);
+      if (othersScore > 0) {
+          labels.push(`Others (${others.length})`);
+          values.push(othersScore);
+          colors.push(palette[5]);
+      }
+  }
+
+  return {
+    labels: labels,
+    datasets: [{
+      data: values,
+      backgroundColor: colors,
+      borderColor: '#ffffff',
+      borderWidth: 2,
+      hoverOffset: 4
+    }]
+  };
+});
+
+// 3. Radar Data (Team Health) - Uses actual calculated metrics
 const radarData = computed(() => {
-    // Mock data based on summary stats if real "health" metrics aren't broken down
-    const score = summary.value?.totals.score ? Math.min(summary.value.totals.score / 100, 100) : 75;
-    const activity = summary.value?.totals.active_developers ? (summary.value.totals.active_developers * 10) : 60;
-    
+  // Use per-chart data if available
+  const data = chartData_health.value || summary.value;
+  
+  if (!data?.leaderboard || data.leaderboard.length === 0) {
     return {
-        labels: ['Speed', 'Quality', 'Consistency', 'Collaboration', 'Impact'],
-        datasets: [{
-            label: 'Team Metrics',
-            data: [activity, score, 85, 70, 90], // Mixed mock/real
-            backgroundColor: 'rgba(59, 130, 246, 0.2)', // blue-500 @ 20%
-            borderColor: '#3b82f6', // blue-500
-            pointBackgroundColor: '#3b82f6',
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: '#3b82f6',
-            fill: true
-        }]
+      labels: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'],
+      datasets: [{
+        label: 'No Data',
+        data: [0, 0, 0, 0, 0],
+        backgroundColor: 'rgba(156, 163, 175, 0.2)',
+        borderColor: '#9ca3af',
+        fill: true
+      }]
+    };
+  }
+  
+  const leaderboard = data.leaderboard;
+  const totals = data.totals || {};
+  
+  // Calculate real health metrics (0-100 scale)
+  const avgScore = leaderboard.reduce((sum: number, d: any) => sum + (d.avg_score || 0), 0) / leaderboard.length;
+  const totalCommits = totals.total_commits || 0;
+  const activeDevelopers = totals.active_developers || leaderboard.length;
+  const daysTracked = totals.days_tracked || 0;
+  
+  // Normalized metrics (0-100)
+  const scoreHealth = Math.min(avgScore, 100); // Already 0-100
+  const commitHealth = Math.min((totalCommits / (activeDevelopers * 7 * 5)) * 100, 100); // vs 5 commits/dev/day
+  const consistencyHealth = Math.min((daysTracked / 7) * 100, 100); // Active days vs 7
+  const teamHealth = Math.min((activeDevelopers / 5) * 100, 100); // Team size vs target 5
+  const coverageHealth = Math.min((leaderboard.filter((d: any) => d.days_active > 0).length / leaderboard.length) * 100, 100);
+  
+  return {
+    labels: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'],
+    datasets: [{
+      label: 'Team Health',
+      data: [scoreHealth, commitHealth, consistencyHealth, teamHealth, coverageHealth],
+      backgroundColor: 'rgba(59, 130, 246, 0.2)', // blue-500 @ 20%
+      borderColor: '#3b82f6', // blue-500
+      pointBackgroundColor: '#3b82f6',
+      pointBorderColor: '#fff',
+      pointHoverBackgroundColor: '#fff',
+      pointHoverBorderColor: '#3b82f6',
+      fill: true
+    }]
+  };
+});
+
+// 4. Card Summary Metrics (Dynamic)
+const cardMetrics = computed(() => {
+    if (!summary.value) return { trend: 0, contribution: 0, health: 0 };
+
+    // 1. Trend %
+    const currentScore = summary.value.trend.scores.reduce((a: number, b: number) => a + b, 0);
+    const prevScore = summary.value.trend.prev_scores.reduce((a: number, b: number) => a + b, 0);
+    const trend = prevScore > 0 ? ((currentScore - prevScore) / prevScore) * 100 : 0;
+
+    // 2. Contribution (Share of Top 3)
+    // Used to be Diversity Score, now "Top 3 Impact"
+    const sorted = [...(summary.value.leaderboard || [])].sort((a, b) => (b.total_score || 0) - (a.total_score || 0));
+    const total = sorted.reduce((sum, d) => sum + (d.total_score || 0), 0);
+    const top3 = sorted.slice(0, 3).reduce((sum, d) => sum + (d.total_score || 0), 0);
+    const contribution = total > 0 ? (top3 / total) * 100 : 0;
+
+    // 3. Overall Health (Avg of radar metrics)
+    // Re-calculating simplified version of radar stats
+    const totals = summary.value.totals || {};
+    const activeDevs = totals.active_developers || 0;
+    const avgScore = sorted.length > 0 ? (sorted.reduce((sum, d) => sum + (d.avg_score || 0), 0) / sorted.length) : 0;
+    
+    // Factors (0-100)
+    const f_score = Math.min(avgScore, 100);
+    const f_consistency = Math.min(((totals.days_tracked || 0) / 7) * 100, 100);
+    const f_activity = Math.min((activeDevs / 5) * 100, 100); // Target 5 devs
+    
+    const health = (f_score + f_consistency + f_activity) / 3;
+
+    return {
+        trend,
+        contribution,
+        health
     };
 });
 
@@ -420,7 +639,7 @@ const radarOptions = {
     <!-- Header -->
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
-        <h1 class="text-3xl font-bold tracking-tight text-foreground">Performance Optimizer</h1>
+        <h1 class="text-3xl font-bold tracking-tight text-foreground">Performance Evaluator</h1>
         <p class="text-muted-foreground">Team metrics, trends, and health analysis.</p>
       </div>
       <div class="flex items-center gap-2">
@@ -437,7 +656,7 @@ const radarOptions = {
 
     <!-- Summary Stats Row -->
     <div v-if="summary" class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card>
+      <Card class="cursor-pointer transition-all hover:shadow-lg hover:border-primary/50" @click="selectedSummary = 'commits'">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle class="text-sm font-medium">Total Commits</CardTitle>
           <GitCommit class="h-4 w-4 text-muted-foreground" />
@@ -447,7 +666,7 @@ const radarOptions = {
           <p class="text-xs text-muted-foreground">Across all repos</p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="cursor-pointer transition-all hover:shadow-lg hover:border-primary/50" @click="selectedSummary = 'developers'">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle class="text-sm font-medium">Active Developers</CardTitle>
           <Activity class="h-4 w-4 text-muted-foreground" />
@@ -457,7 +676,7 @@ const radarOptions = {
           <p class="text-xs text-muted-foreground">Contributing this week</p>
         </CardContent>
       </Card>
-       <Card>
+       <Card class="cursor-pointer transition-all hover:shadow-lg hover:border-primary/50" @click="selectedSummary = 'repos'">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle class="text-sm font-medium">Tracked Repos</CardTitle>
           <Archive class="h-4 w-4 text-muted-foreground" />
@@ -467,7 +686,7 @@ const radarOptions = {
           <p class="text-xs text-muted-foreground">Active repositories</p>
         </CardContent>
       </Card>
-      <Card>
+      <Card class="cursor-pointer transition-all hover:shadow-lg hover:border-primary/50" @click="selectedSummary = 'score'">
         <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle class="text-sm font-medium">Overall Score</CardTitle>
           <TrendingUp class="h-4 w-4 text-muted-foreground" />
@@ -494,8 +713,8 @@ const radarOptions = {
             </CardContent>
             <div class="p-6 pt-0 flex w-full items-start gap-2 text-sm mt-auto">
                 <div class="grid gap-2">
-                    <div class="flex items-center gap-2 leading-none font-medium text-green-600">
-                      Trending up by 5.2% <TrendingUp class="h-4 w-4" />
+                    <div class="flex items-center gap-2 leading-none font-medium" :class="cardMetrics.trend >= 0 ? 'text-green-600' : 'text-red-500'">
+                      Trending {{ cardMetrics.trend >= 0 ? 'up' : 'down' }} by {{ Math.abs(cardMetrics.trend).toFixed(1) }}% <TrendingUp class="h-4 w-4" :class="{'rotate-180': cardMetrics.trend < 0}" />
                     </div>
                 </div>
             </div>
@@ -514,8 +733,8 @@ const radarOptions = {
             </CardContent>
             <div class="p-6 pt-0 flex w-full items-start gap-2 text-sm mt-auto">
                 <div class="grid gap-2">
-                    <div class="flex items-center gap-2 leading-none font-medium">
-                    Diversity Score: 8.5 <Activity class="h-4 w-4 text-blue-500" />
+                    <div class="flex items-center gap-2 leading-none font-medium text-blue-600">
+                    Top 3 Impact: {{ cardMetrics.contribution.toFixed(0) }}% <Activity class="h-4 w-4" />
                     </div>
                 </div>
             </div>
@@ -535,7 +754,7 @@ const radarOptions = {
             <div class="p-6 pt-0 flex w-full items-start gap-2 text-sm mt-auto">
                 <div class="grid gap-2">
                     <div class="flex items-center gap-2 leading-none font-medium text-indigo-600">
-                    Overall Health: 92% <TrendingUp class="h-4 w-4" />
+                    Overall Health: {{ cardMetrics.health.toFixed(0) }}% <TrendingUp class="h-4 w-4" />
                     </div>
                 </div>
             </div>
@@ -663,17 +882,149 @@ const radarOptions = {
     <!-- Chart Modal (Teleported via Dialog) -->
     <!-- We place it here; Shadcn Dialog renders to body usually -->
     <Dialog :open="!!selectedChart" @update:open="(val) => !val && (selectedChart = null)">
-      <DialogContent class="max-w-4xl w-full h-[80vh] flex flex-col z-[100]" style="z-index: 100;">
+      <DialogContent class="max-w-5xl w-full h-[85vh] flex flex-col z-[100]" style="z-index: 100;">
         <DialogHeader>
           <DialogTitle>{{ selectedChartTitle }}</DialogTitle>
-          <DialogDescription>Detailed breakdown of metrics.</DialogDescription>
+          <DialogDescription class="text-sm text-muted-foreground mt-1">
+            {{ selectedChartDescription }}
+          </DialogDescription>
         </DialogHeader>
+        
+        <!-- Chart Filters -->
+        <div class="flex flex-wrap items-center gap-4 px-4 py-3 bg-muted/30 rounded-lg border">
+          <div class="flex items-center gap-2">
+            <label class="text-sm font-medium whitespace-nowrap">Time Period:</label>
+            <select 
+              :value="currentChartFilters.days" 
+              @change="updateChartFilter('days', Number(($event.target as HTMLSelectElement).value))"
+              class="h-8 px-2 rounded-md border border-input bg-background text-sm"
+            >
+              <option :value="7">Last 7 Days</option>
+              <option :value="14">Last 14 Days</option>
+              <option :value="30">Last 30 Days</option>
+              <option :value="60">Last 60 Days</option>
+              <option :value="90">Last 90 Days</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm font-medium whitespace-nowrap">Developer:</label>
+            <select 
+              :value="currentChartFilters.developerId"
+              @change="updateChartFilter('developerId', ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value))"
+              class="h-8 px-2 rounded-md border border-input bg-background text-sm min-w-[150px]"
+            >
+              <option value="">All Developers</option>
+              <option v-for="dev in developers" :key="dev.id" :value="dev.id">
+                {{ dev.name }}
+              </option>
+            </select>
+          </div>
+          <div class="text-xs text-muted-foreground ml-auto">
+            <span v-if="currentChartFilters.developerId">Filtered view</span>
+            <span v-else>Team aggregate</span>
+          </div>
+        </div>
+        
+        <!-- Chart Area -->
         <div class="flex-1 w-full min-h-0 relative p-4">
              <div class="w-full h-full">
                 <Line v-if="selectedChart === 'trend'" :data="chartData" :options="chartOptions" />
                 <Doughnut v-if="selectedChart === 'distribution'" :data="radialData" :options="radialOptions" />
                 <Radar v-if="selectedChart === 'health'" :data="radarData" :options="radarOptions" />
              </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Summary Details Modal -->
+    <Dialog :open="!!selectedSummary" @update:open="(val) => !val && (selectedSummary = null)">
+      <DialogContent class="max-w-4xl w-full max-h-[85vh] flex flex-col z-[100]" style="z-index: 100;">
+        <DialogHeader>
+          <DialogTitle>{{ summaryModalTitle }}</DialogTitle>
+          <DialogDescription class="text-sm text-muted-foreground">
+            {{ summaryModalDescription }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <!-- Filters (Hidden for Repos) -->
+        <div v-if="selectedSummary !== 'repos'" class="flex flex-wrap items-center gap-4 px-4 py-3 bg-muted/30 rounded-lg border">
+            <div class="flex items-center gap-2">
+                <label class="text-sm font-medium whitespace-nowrap">Duration:</label>
+                <select v-model="summaryFilters.days" class="h-8 px-2 rounded-md border border-input bg-background text-sm">
+                    <option :value="7">Last 7 Days</option>
+                    <option :value="14">Last 14 Days</option>
+                    <option :value="30">Last 30 Days</option>
+                    <option :value="60">Last 60 Days</option>
+                    <option :value="90">Last 90 Days</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-sm font-medium whitespace-nowrap">Developer:</label>
+                <select v-model="summaryFilters.developerId" class="h-8 px-2 rounded-md border border-input bg-background text-sm min-w-[150px]">
+                    <option :value="null">All Developers</option>
+                    <option v-for="dev in developers" :key="dev.id" :value="dev.id">{{ dev.name }}</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="flex-1 w-full min-h-0 relative p-4 overflow-y-auto">
+            
+            <!-- Table: Repos -->
+            <div v-if="selectedSummary === 'repos'">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-muted-foreground uppercase bg-muted/50 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">Repository</th>
+                            <th class="px-4 py-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="repo in summaryDetails" :key="repo.id || repo.name" class="border-b">
+                            <td class="px-4 py-3 font-medium">{{ repo.name }}</td>
+                            <td class="px-4 py-3 text-green-600">Active</td> 
+                        </tr>
+                         <tr v-if="summaryDetails.length === 0">
+                            <td colspan="2" class="px-4 py-6 text-center text-muted-foreground">No repositories found.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table: Commits/Score/Devs (Based on raw metrics) -->
+            <div v-else>
+                 <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-muted-foreground uppercase bg-muted/50 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">Date</th>
+                            <!-- Only show Developer column if not filtering by one -->
+                            <th v-if="!summaryFilters.developerId" class="px-4 py-3">Developer</th>
+                            <th class="px-4 py-3 text-right">Commits</th>
+                            <th class="px-4 py-3 text-right">Score</th>
+                            <th v-if="selectedSummary === 'commits'" class="px-4 py-3 text-right">Lines +/-</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in summaryDetails" :key="item.id" class="border-b hover:bg-muted/50 transition-colors">
+                            <td class="px-4 py-3 whitespace-nowrap">{{ item.date }}</td>
+                            <td v-if="!summaryFilters.developerId" class="px-4 py-3 font-medium">
+                                {{ item.developer || 'Unknown' }}
+                            </td>
+                            <td class="px-4 py-3 text-right font-mono">{{ item.commits }}</td>
+                            <td class="px-4 py-3 text-right font-mono font-medium">{{ item.score?.toFixed(1) }}</td>
+                            <td v-if="selectedSummary === 'commits'" class="px-4 py-3 text-right text-xs text-muted-foreground">
+                                <span class="text-green-600">+{{ item.lines_added }}</span> / <span class="text-red-600">-{{ item.lines_deleted }}</span>
+                            </td>
+                        </tr>
+                        <tr v-if="summaryDetails.length === 0">
+                            <td colspan="5" class="px-4 py-8 text-center text-muted-foreground">
+                                No records found for this period.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
         </div>
       </DialogContent>
     </Dialog>
