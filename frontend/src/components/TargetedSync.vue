@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue';
 import { API_BASE_URL } from '../config';
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,9 @@ const visible = ref(false);
 const selectedDeveloperName = ref<string>('');
 const isCalendarOpen = ref(false);
 
+const syncGithub = ref(true);
+const syncWakatime = ref(true);
+
 const emit = defineEmits(['dataUpdated']);
 
 const df = new DateFormatter('en-US', {
@@ -62,6 +66,11 @@ const fetchDevelopers = async () => {
 };
 
 const handleSync = async () => {
+  if (!syncGithub.value && !syncWakatime.value) {
+      message.value = 'Error: Please select at least one service to sync.';
+      return;
+  }
+
   loading.value = true;
   message.value = '';
   try {
@@ -76,6 +85,8 @@ const handleSync = async () => {
       body: JSON.stringify({
         developer_id: selectedDeveloper.value ? selectedDeveloper.value.id : null,
         date: apiDate,
+        sync_github: syncGithub.value,
+        sync_wakatime: syncWakatime.value
       }),
     });
 
@@ -83,8 +94,8 @@ const handleSync = async () => {
         message.value = 'Sync successful!';
         emit('dataUpdated');
     } else {
-      const errorText = await response.text();
-      message.value = `Error: ${errorText}`;
+        const errorText = await response.text();
+        message.value = `Error: ${errorText}`;
     }
   } catch (error) {
     message.value = 'A network error occurred.';
@@ -154,6 +165,26 @@ watch(visible, (isOpen) => {
               />
             </PopoverContent>
            </Popover>
+        </div>
+        
+        <div class="grid flex-col gap-2">
+            <Label>Sync Options</Label>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="sync-github" v-model="syncGithub" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary accent-black" />
+                    <Label for="sync-github" class="text-sm font-normal cursor-pointer">Sync GitHub</Label>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" id="sync-wakatime" v-model="syncWakatime" class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary accent-black" />
+                    <Label for="sync-wakatime" class="text-sm font-normal cursor-pointer">Sync WakaTime</Label>
+                </div>
+            </div>
+            <!-- Debug State -->
+            <div class="text-xs text-muted-foreground mt-1">
+                Will Sync: 
+                <span :class="syncGithub ? 'text-green-600' : 'text-red-500'">GitHub ({{ syncGithub }})</span>, 
+                <span :class="syncWakatime ? 'text-green-600' : 'text-red-500'">WakaTime ({{ syncWakatime }})</span>
+            </div>
         </div>
       </div>
 

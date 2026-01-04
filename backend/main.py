@@ -86,20 +86,7 @@ async def create_repository(repo: RepositoryCreate, db: Session = Depends(databa
         if not is_valid:
             raise HTTPException(status_code=400, detail="Invalid GitHub Token or Repository not reachable.")
     
-    # If not token provided, maybe we should try to validate with env token? 
-    # Let's simple validate access in general.
-    # But wait, GitService init reads env token.
-    if not token_to_use:
-         # Try with default
-         is_valid = await gs.validate_repo_token(repo.name, gs.token) # gs.token comes from env
-         if not is_valid:
-             # Just a warning? Or block?
-             # If it's public, it might work without token (but rate limits).
-             # Let's enforce reachability.
-             # Actually, validate_repo_token uses the passed token. passing gs.token checks system access.
-             if not gs.token:
-                  # If no system token and no repo token, we might strictly fail or allow public.
-                  pass 
+    # If no token provided, we proceed (assuming public repository or no verification needed) 
     
     db_repo = models.Repository(name=repo.name, token=repo.token)
     db.add(db_repo)
@@ -114,10 +101,37 @@ def get_repositories(db: Session = Depends(database.get_db)):
 @app.get("/developers/")
 def get_developers(db: Session = Depends(database.get_db)):
     return db.query(models.Developer).all()
+class TokenUpdate(BaseModel):
+    token: str
+
+@app.put("/repositories/{repo_id}/token")
+async def update_repo_token(repo_id: int, update: TokenUpdate, db: Session = Depends(database.get_db)):
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    
+    # Validate New Token
+    gs = collector.GitService()
+    is_valid = await gs.validate_repo_token(repo.name, update.token)
+    
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid Token or Repository not reachable")
+    
+    # Update DB
+    repo.token = update.token
+    repo.status = 'active'
+    repo.last_error = None
+    from datetime import datetime
+    repo.last_checked = datetime.now()
+    
+    db.commit()
+    return {"status": "success", "message": "Token updated and verified"}
 
 class TargetedSyncRequest(BaseModel):
     developer_id: int | None = None
     date: str | None = None # "YYYY-MM-DD"
+    sync_github: bool = True
+    sync_wakatime: bool = True
 
 @app.post("/sync/target")
 async def sync_targeted_metrics(request: TargetedSyncRequest, db: Session = Depends(database.get_db)):
@@ -133,7 +147,14 @@ async def sync_targeted_metrics(request: TargetedSyncRequest, db: Session = Depe
             
     print(f"Received Targeted Sync Request: DevID={request.developer_id}, Date={target_date}")
     
-    results = await collector.sync_daily_metrics(db, target_date, optimize=False, developer_id=request.developer_id)
+    results = await collector.sync_daily_metrics(
+        db, 
+        target_date, 
+        optimize=False, 
+        developer_id=request.developer_id,
+        sync_github=request.sync_github,
+        sync_wakatime=request.sync_wakatime
+    )
     return {"status": "success", "results": results}
 
 
@@ -440,15 +461,27 @@ def get_metrics_summary(
         
         # Daily aggregation
         if d_str not in daily_data:
-            daily_data[d_str] = {"total_score": 0, "total_commits": 0, "total_coding_mins": 0, "count": 0, "date_obj": m.date}
+            daily_data[d_str] = {
+                "total_score": 0, "total_commits": 0, "total_coding_mins": 0, "count": 0, 
+                "date_obj": m.date,
+                "items": [] # Store individual records for frontend breakdown
+            }
         daily_data[d_str]["total_score"] += m.score or 0
         daily_data[d_str]["total_commits"] += m.commits_count or 0
         daily_data[d_str]["total_coding_mins"] += (m.coding_time_seconds or 0) // 60
         daily_data[d_str]["count"] += 1
         
+        # Add item details
+        daily_data[d_str]["items"].append({
+            "developer_id": m.developer_id,
+            "developer": dev_name, # Frontend expects "developer" or "name"? check usage. Frontend uses devId to map name or assumes it matches.
+            "score": m.score or 0,
+            "commits": m.commits_count or 0
+        })
+        
         # Developer aggregation
         if dev_name not in developer_totals:
-            developer_totals[dev_name] = {"total_score": 0, "days_active": 0, "total_commits": 0}
+            developer_totals[dev_name] = {"total_score": 0, "days_active": 0, "total_commits": 0, "developer_id": m.developer_id, "id": m.developer_id}
         developer_totals[dev_name]["total_score"] += m.score or 0
         developer_totals[dev_name]["total_commits"] += m.commits_count or 0
         if (m.commits_count or 0) > 0 or (m.active_coding_seconds or 0) > 0:
@@ -469,6 +502,9 @@ def get_metrics_summary(
     trend_commits = []
     prev_trend_scores = []
     
+    # Prepare flat daily_data list for response
+    daily_data_list = []
+    
     for i, curr_date in enumerate(current_week_dates):
         prev_date = prev_week_dates[i]
         
@@ -482,9 +518,19 @@ def get_metrics_summary(
         if curr_key in daily_data:
             trend_scores.append(round(daily_data[curr_key]["total_score"], 1))
             trend_commits.append(daily_data[curr_key]["total_commits"])
+            # Add to list
+            day_data = daily_data[curr_key].copy()
+            day_data["date"] = curr_key
+            del day_data["date_obj"] # Remove non-serializable
+            daily_data_list.append(day_data)
         else:
             trend_scores.append(0)
             trend_commits.append(0)
+            daily_data_list.append({
+                "date": curr_key,
+                "total_score": 0,
+                "items": []
+            })
         
         # Previous week data (aligned by same weekday position)
         prev_key = prev_date.isoformat()
@@ -534,6 +580,7 @@ def get_metrics_summary(
         },
         "leaderboard": leaderboard,
         "best_day": best_day,
+        "daily_data": daily_data_list, # Include detailed breakdowns
         "totals": {
             "total_score": sum(trend_scores),
             "total_commits": sum(trend_commits),

@@ -15,15 +15,17 @@ import {
 } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '../config';
+import ExportModal from './ExportModal.vue';
 import RepositoryManager from './RepositoryManager.vue';
 import TargetedSync from './TargetedSync.vue';
 import ActivityArchive from './ActivityArchive.vue';
 import TimezoneSelector from './TimezoneSelector.vue';
 import ThemeToggle from './ThemeToggle.vue';
-import ExportModal from './ExportModal.vue';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Table,
   TableBody,
@@ -212,11 +214,22 @@ onMounted(() => {
 });
 
 // Chart Logic
+import { Input } from '@/components/ui/input'
+import { Check, ChevronsUpDown, Search } from 'lucide-vue-next'
+
 const selectedChart = ref<string | null>(null);
 
+// Combobox Search State
+const devSearchQuery = ref('');
+const filteredComboboxDevelopers = computed(() => {
+    if (!devSearchQuery.value) return developers.value;
+    const q = devSearchQuery.value.toLowerCase();
+    return developers.value.filter(d => d.name.toLowerCase().includes(q));
+});
+
 // Per-chart filter states
-const chartFilters = ref<Record<string, { days: number; developerId: number | null; isComparison?: boolean; dateA?: string; dateB?: string; selectedFactors?: string[] }>>({
-  trend: { days: 7, developerId: null },
+const chartFilters = ref<Record<string, { days: number; developerId: number | null; developerIds?: number[]; isComparison?: boolean; dateA?: string; dateB?: string; selectedFactors?: string[] }>>({
+  trend: { days: 7, developerId: null, developerIds: [] },
   distribution: { days: 7, developerId: null },
   health: { days: 7, developerId: null, isComparison: false, dateA: new Date().toISOString().split('T')[0], dateB: new Date().toISOString().split('T')[0], selectedFactors: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'] }
 });
@@ -238,7 +251,11 @@ const fetchChartData = async (chartType: string) => {
   const filters = chartFilters.value[chartType];
   const fetchForParams = async (params: string) => {
       let url = `${API_BASE_URL}/metrics/summary?${params}`;
-      if (filters.developerId) url += `&developer_id=${filters.developerId}`;
+      // If specific ID is set AND multi-select is empty (or not exists), use backend filter.
+      // If multi-select has values, we fetch ALL to filter on frontend.
+      if (filters.developerId && (!filters.developerIds || filters.developerIds.length === 0)) {
+          url += `&developer_id=${filters.developerId}`;
+      }
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch chart data');
       return await res.json();
@@ -420,10 +437,56 @@ const selectedChartDescription = computed(() => {
 
 // 1. Line Chart Data (Trend) - Now with previous week comparison
 // Uses per-chart data when modal is open, otherwise uses main summary
+// 1. Line Chart Data (Trend) - Now with previous week comparison OR Multi-Developer Comparison
+// Uses per-chart data when modal is open, otherwise uses main summary
 const chartData = computed(() => {
   const data = chartData_trend.value || summary.value;
+  const labels = data?.trend?.labels || [];
+  
+  // Check for Multi-Select Filters
+  const filters = currentChartFilters.value; // Access reactive filter
+  const selectedIds = filters.developerIds || [];
+
+  if (selectedIds.length > 0) {
+      // MULTI-DEVELOPER MODE: Show one line per developer
+      const datasets: any[] = [];
+      const palette = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#ef4444', '#06b6d4', '#84cc16'];
+      
+      selectedIds.forEach((devId, idx) => {
+          const dev = developers.value.find(d => d.id === devId);
+          const devName = dev ? dev.name : `Dev ${devId}`;
+          const color = palette[idx % palette.length];
+          
+          // Extract scores from daily_data
+          const scores = (data.daily_data || []).map((day: any) => {
+              // Find item for this developer
+              const item = (day.items || []).find((i: any) => i.developer_id === devId);
+              return item ? (item.score || 0) : 0;
+          });
+
+          // Ensure score array matches labels length (padding if needed, though daily_data usually matches days param)
+          // Ideally rely on API correctness or map by date label if labels are dates.
+          // Assuming API returns daily_data in same order as labels.
+          
+          datasets.push({
+              label: devName,
+              data: scores,
+              borderColor: color,
+              backgroundColor: color, // For legend
+              tension: 0.4,
+              fill: false,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              borderWidth: 2
+          });
+      });
+      
+      return { labels, datasets };
+  } 
+
+  // DEFAULT MODE: Total Score + Previous Week Comparison
   return {
-    labels: data?.trend?.labels || [],
+    labels: labels,
     datasets: [
       {
         label: 'Previous Week',
@@ -718,6 +781,7 @@ const radarOptions = {
         </div>
       </div>
       <div class="flex items-center gap-2">
+         <RepositoryManager />
          <ExportModal :developers="developers" />
          <ThemeToggle class="z-50 relative" />
          <TimezoneSelector @update:timezone="(tz: string) => selectedTimezone = tz" />
@@ -1071,7 +1135,65 @@ const radarOptions = {
 
           <div class="flex items-center gap-2 ml-auto">
             <label class="text-sm font-medium whitespace-nowrap">Developer:</label>
-            <select 
+            
+            <!-- Multi-Select Combobox for Trend -->
+            <Popover v-if="selectedChart === 'trend'">
+                <PopoverTrigger as-child>
+                    <Button variant="outline" role="combobox" class="h-8 w-[200px] justify-between text-sm px-2">
+                        <span class="truncate">
+                            <span v-if="(!currentChartFilters.developerIds || currentChartFilters.developerIds.length === 0)">
+                                All Developers
+                            </span>
+                            <span v-else>
+                                {{ currentChartFilters.developerIds.length }} Selected
+                            </span>
+                        </span>
+                        <ChevronsUpDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-[200px] p-0 z-[200]" align="end">
+                    <div class="p-2 pb-0">
+                        <div class="flex items-center border rounded-md px-2 bg-background mb-2">
+                            <Search class="h-4 w-4 text-muted-foreground mr-1" />
+                            <input 
+                                v-model="devSearchQuery"
+                                class="flex h-8 w-full rounded-md bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                                placeholder="Search..."
+                            />
+                        </div>
+                    </div>
+                    <div class="max-h-[300px] overflow-y-auto p-1 space-y-0.5">
+                        <!-- All Developers Option -->
+                        <div class="flex items-center px-2 py-1.5 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground text-sm"
+                             @click="updateChartFilter('developerIds', [])">
+                             <Check class="mr-2 h-4 w-4" 
+                                    :class="(!currentChartFilters.developerIds || currentChartFilters.developerIds.length === 0) ? 'opacity-100' : 'opacity-0'" />
+                             <span>All Developers</span>
+                        </div>
+                        
+                        <!-- Filtered List -->
+                        <div v-for="dev in filteredComboboxDevelopers" :key="dev.id" 
+                               class="flex items-center px-2 py-1.5 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground text-sm"
+                               @click="() => {
+                                    const ids = [...(currentChartFilters.developerIds || [])];
+                                    const idx = ids.indexOf(dev.id);
+                                    if (idx > -1) ids.splice(idx, 1);
+                                    else ids.push(dev.id);
+                                    updateChartFilter('developerIds', ids);
+                               }">
+                             <Check class="mr-2 h-4 w-4" 
+                                    :class="(currentChartFilters.developerIds || []).includes(dev.id) ? 'opacity-100' : 'opacity-0'" />
+                             <span>{{ dev.name }}</span>
+                        </div>
+                        <div v-if="filteredComboboxDevelopers.length === 0" class="py-6 text-center text-sm text-muted-foreground">
+                            No developer found.
+                        </div>
+                    </div>
+                </PopoverContent>
+            </Popover>
+
+            <!-- Legacy Select for Other Charts -->
+            <select v-else
               :value="currentChartFilters.developerId"
               @change="updateChartFilter('developerId', ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value))"
               class="h-8 px-2 rounded-md border border-input bg-background text-sm min-w-[150px]"

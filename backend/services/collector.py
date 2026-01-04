@@ -5,11 +5,14 @@ from .git_service import GitService
 from .wakatime_service import WakaTimeService
 from .score_calculator import calculate_developer_score
 
-async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = False, developer_id: int | None = None):
+async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = False, developer_id: int | None = None, sync_github: bool = True, sync_wakatime: bool = True):
     """
     Syncs metrics for developers for a SPECIFIC DATE.
     If developer_id is provided, only syncs that developer.
     If optimize=True, skips fetching for a developer if they already have >0 data for this date.
+    
+    sync_github: If True, fetches GitHub data.
+    sync_wakatime: If True, fetches WakaTime data.
     """
     git_service = GitService()
     wakatime_service = WakaTimeService()
@@ -24,8 +27,11 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
 
     repositories = db.query(Repository).all()
     results = []
+    
+    # Determine Sync Mode
+    is_full_sync = (sync_github and sync_wakatime)
 
-    print(f"--- Syncing metrics for {target_date} (Optimize={optimize}) ---")
+    print(f"--- Syncing metrics for {target_date} (Optimize={optimize}, GitHub={sync_github}, WakaTime={sync_wakatime}) ---")
 
     for dev in developers:
         # Check existing metric first - get ALL to handle potential duplicates
@@ -34,69 +40,101 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             Metric.date == target_date
         ).all()
         
-        # ALWAYS clean up duplicates if more than one exists (one-record-per-day rule)
+        metric = None
+
+        # CLEANUP DUPLICATES (Existing logic)
         if len(existing_metrics) > 1:
             print(f"  [Cleanup] Found {len(existing_metrics)} records for {dev.name} on {target_date}, keeping newest")
-            # Sort by id descending, keep the first (newest), delete the rest
             sorted_metrics = sorted(existing_metrics, key=lambda m: m.id, reverse=True)
             metric = sorted_metrics[0]
             for m in sorted_metrics[1:]:
                 db.delete(m)
             db.commit()
-            existing_metrics = [metric]  # Update list to reflect cleanup
-        else:
-            metric = existing_metrics[0] if existing_metrics else None
+            existing_metrics = [metric]
+        elif existing_metrics:
+            metric = existing_metrics[0]
 
-        # Check if the existing data is "finalized"
+        # OPTIMIZATION (Existing logic)
         is_finalized = False
         if metric and metric.updated_at:
             is_finalized = (metric.updated_at.date() > target_date)
 
-        # STRICT OPTIMIZATION Rule #1:
         if optimize and metric and is_finalized:
              print(f"  [Skipping] {dev.name} for {target_date} (Finalized & Strict Optimization)")
-             # ... append results ...
-             results.append({
-                "developer": dev.name,
-                "date": target_date.isoformat(),
-                "commits": metric.commits_count,
-                "coding_time": f"{metric.coding_time_seconds//60} mins",
-                "start": metric.start_work_time,
-                "end": metric.end_work_time,
-                "score": metric.score
-             })
+             results.append({ "developer": dev.name, "status": "skipped" })
              continue
         
-        # For targeted sync (optimize=False), delete and recreate the record
-        if not optimize and existing_metrics:
-            print(f"  [Targeted Sync] Deleting existing record for {dev.name} on {target_date} to ensure clean rewrite.")
-            for m in existing_metrics:
-                db.delete(m)
+        # TARGETED SYNC STRATEGY
+        # 1. Full Sync (Both Enabled) + Not Optimize -> DELETE and REWRITE (Legacy behavior)
+        if not optimize and is_full_sync and metric:
+            print(f"  [Full Sync] Deleting existing record for {dev.name} on {target_date} to ensure clean rewrite.")
+            db.delete(metric)
             db.commit()
             metric = None
         
-        # If not finalized, or optimizations off, or no record -> We proceed to fetch.
+        # 2. Partial Sync -> Keep existing metric (if any) and UPDATE specific columns
+        if not optimize and not is_full_sync and metric:
+            print(f"  [Partial Sync] Updating existing record for {dev.name} on {target_date} (GitHub={sync_github}, WakaTime={sync_wakatime})")
+            # We keep 'metric' object and will update its properties below
+        
+        # Initialize variables for new data (defaults 0)
+        # If we have an existing metric (Partial Sync), we load current values as defaults to preserve them
+        total_commits = metric.commits_count if metric else 0
+        lines_added = metric.lines_added if metric else 0
+        lines_deleted = metric.lines_deleted if metric else 0
+        files_modified = metric.files_modified if metric else 0
+        churn_score = metric.churn_score if metric else 0.0
+        
+        coding_seconds = metric.coding_time_seconds if metric else 0
+        active_coding_seconds = metric.active_coding_seconds if metric else 0
+        deep_work_seconds = metric.deep_work_seconds if metric else 0
+        start_work_time = metric.start_work_time if metric else None
+        end_work_time = metric.end_work_time if metric else None
+        project_focus_ratio = metric.project_focus_ratio if metric else 0.0
+        context_switches = metric.context_switches if metric else 0
+        wakatime_json = metric.wakatime_data if metric else None
         
         try:
-            # ATOMIC SYNC Rule #2:
-            # "make a validation if the request... interrupt or not give whole data dont make a record"
-            # We use local variables. We only write to DB at the end if ALL succeed.
-
             # --- 1. Git Commits ---
-            total_commits = 0
-            lines_added = 0
-            lines_deleted = 0
-            files_modified = 0
-            
-            if repositories:
+            if sync_github and repositories:
+                # Reset Git counters if we are syncing Git (overwrite old values)
+                total_commits = 0
+                lines_added = 0
+                lines_deleted = 0
+                files_modified = 0
+                from .git_service import AuthenticationError
                 for repo in repositories:
-                    # fetch_commits_in_repo now returns DICT `{count, lines_added, ...}`
-                    stats = await git_service.fetch_commits_in_repo(dev.git_username, repo.name, target_date, target_date, token=repo.token)
-                    
-                    total_commits += stats.get('count', 0)
-                    lines_added += stats.get('lines_added', 0)
-                    lines_deleted += stats.get('lines_deleted', 0)
-                    files_modified += stats.get('files_modified', 0)
+                    try:
+                        # fetch_commits_in_repo now returns DICT `{count, lines_added, ...}`
+                        stats = await git_service.fetch_commits_in_repo(dev.git_username, repo.name, target_date, target_date, token=repo.token)
+                        
+                        # If success, clear any previous error status
+                        if repo.status == 'error':
+                             repo.status = 'active'
+                             repo.last_error = None
+                             db.commit()
+
+                        total_commits += stats.get('count', 0)
+                        lines_added += stats.get('lines_added', 0)
+                        lines_deleted += stats.get('lines_deleted', 0)
+                        files_modified += stats.get('files_modified', 0)
+                    except AuthenticationError as auth_err:
+                        print(f"  [Error] Auth failed for repo {repo.name}: {auth_err}")
+                        repo.status = 'error'
+                        repo.last_error = str(auth_err)
+                        from datetime import datetime
+                        repo.last_checked = datetime.now()
+                        db.commit()
+                        # We might want to continue to other repos? Or fail hard? 
+                        # User request: "show correct error". 
+                        # If one repo fails, the metrics for the day are incomplete.
+                        # Maybe we shouldn't create a record?
+                        # Let's propagate the error so the sync status reflects failure.
+                        raise auth_err
+                    except Exception as e:
+                         print(f"  [Error] Generic error for repo {repo.name}: {e}")
+                         # Don't mark as auth error, but log it.
+                         raise e
 
             # Calculate Churn Score (Rework Ratio)
             # Formula: Deletions / (Additions + Deletions)
@@ -107,16 +145,15 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                 churn_score = round(lines_deleted / total_lines, 2)
 
             # --- 2. WakaTime Stats ---
-            coding_seconds = 0
-            # --- 2. WakaTime Stats ---
-            coding_seconds = 0
-            active_coding_seconds = 0
-            deep_work_seconds = 0
-            project_focus_ratio = 0.0
-            context_switches = 0
-            wakatime_json = None
-            
-            if dev.wakatime_api_key:
+            if sync_wakatime and dev.wakatime_api_key:
+                # Reset WakaTime counters if we are syncing WakaTime
+                coding_seconds = 0
+                active_coding_seconds = 0
+                deep_work_seconds = 0
+                project_focus_ratio = 0.0
+                context_switches = 0
+                wakatime_json = None
+                
                 # User Request: "Remove repo filter". We now track ALL time reported by WakaTime.
                 # We no longer strictly match 'allowed_projects'.
                 
@@ -215,6 +252,15 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
                 context_switches=context_switches
             )
             
+            # Format Start/End Strings (Moved inside WakaTime block or preserved)
+            # If we synced WakaTime, we have new timestamps. Convert them.
+            if sync_wakatime and min_start_timestamp and max_end_timestamp:
+                from ..utils import get_timezone
+                from datetime import datetime
+                tz = get_timezone()
+                start_work_time = datetime.fromtimestamp(min_start_timestamp, tz)
+                end_work_time = datetime.fromtimestamp(max_end_timestamp, tz)
+            
             # 4. Save/Update DB (Only reached if no exception raised above)
             if not metric:
                 metric = Metric(developer_id=dev.id, date=target_date)
@@ -226,25 +272,20 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             metric.files_modified = files_modified
             metric.churn_score = churn_score
             
-            metric.coding_time_seconds = coding_seconds # Keep legacy total
+            metric.coding_time_seconds = coding_seconds
             metric.active_coding_seconds = active_coding_seconds
             metric.deep_work_seconds = deep_work_seconds
             metric.project_focus_ratio = project_focus_ratio
             metric.context_switches = context_switches
             metric.wakatime_data = wakatime_json
             
-            # Format Start/End Strings
-            from ..utils import get_timezone
-            from datetime import datetime
-            tz = get_timezone()
-            metric.start_work_time = datetime.fromtimestamp(min_start_timestamp, tz) if min_start_timestamp else None
-            metric.end_work_time = datetime.fromtimestamp(max_end_timestamp, tz) if max_end_timestamp else None
+            metric.start_work_time = start_work_time
+            metric.end_work_time = end_work_time
             
             # Safety Check: Ensure Start <= End
             if metric.start_work_time and metric.end_work_time:
                 if metric.start_work_time > metric.end_work_time:
                     print(f"WARNING: Correcting inverted start/end for {dev.name}: {metric.start_work_time} > {metric.end_work_time}")
-                    # Swap them
                     metric.start_work_time, metric.end_work_time = metric.end_work_time, metric.start_work_time
 
             metric.score = score

@@ -2,24 +2,22 @@ import httpx
 import os
 from datetime import datetime, date, timedelta
 
+class AuthenticationError(Exception):
+    pass
+
 class GitService:
     def __init__(self):
-        self.token = os.getenv("GITHUB_TOKEN")
         self.base_url = "https://api.github.com"
-        self.headers = {
-            "Authorization": f"token {self.token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-
+        
     async def fetch_commits_in_repo(self, username: str, repo_name: str, since_date: date, until_date: date | None = None, token: str | None = None) -> dict:
         """
         Fetches detailed stats for commits by a user in a repository within a date range.
         Returns: { 'count': int, 'lines_added': int, 'lines_deleted': int, 'files_modified': int }
         """
-        api_token = token if token else self.token
+        api_token = token
         
         if not api_token:
-             print("Warning: GITHUB_TOKEN not set and no repo token provided.")
+             print(f"Warning: No access token provided for repository {repo_name}. Skipping fetch.")
              return {'count': 0, 'lines_added': 0, 'lines_deleted': 0, 'files_modified': 0}
 
         headers = {
@@ -57,6 +55,9 @@ class GitService:
                     params=params
                 )
                 
+                if response.status_code in [401, 403]:
+                    raise AuthenticationError(f"GitHub Auth Error: {response.status_code}")
+
                 if response.status_code != 200:
                     error_msg = f"GitHub API Error: {response.status_code} {response.text}"
                     print(error_msg)

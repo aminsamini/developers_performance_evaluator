@@ -19,6 +19,11 @@ class Repository(Base):
     name = Column(String, unique=True, index=True) # e.g. "owner/repo"
     url = Column(String, nullable=True)
     token = Column(String, nullable=True)
+    
+    # Status Tracking
+    status = Column(String, default="active") # "active", "error"
+    last_error = Column(String, nullable=True)
+    last_checked = Column(DateTime, nullable=True)
 
 class Metric(Base):
     __tablename__ = "metrics"

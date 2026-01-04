@@ -1,11 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { API_BASE_URL } from '../config';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   Dialog,
   DialogContent,
@@ -15,192 +10,142 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Plus, GitBranch, Users } from 'lucide-vue-next'
-import AddDeveloperForm from './AddDeveloperForm.vue';
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { ShieldCheck, ShieldAlert, Settings } from 'lucide-vue-next'
 
-const emit = defineEmits(['dataUpdated']);
+interface Repository {
+    id: number;
+    name: string; // owner/repo
+    status: 'active' | 'error';
+    last_error?: string;
+    last_checked?: string;
+}
 
-// Repository State
-const repoName = ref('');
-const repoToken = ref('');
-const repositories = ref<any[]>([]);
-const repoLoading = ref(false);
-const repoMessage = ref('');
-const repoDialogVisible = ref(false);
+const open = ref(false)
+const repositories = ref<Repository[]>([])
+const loading = ref(false)
+const fixingRepo = ref<Repository | null>(null)
+const newToken = ref('')
+const updating = ref(false)
 
-// Developer State
-const developers = ref<any[]>([]);
-
-// Fetch Data
 const fetchRepositories = async () => {
+    loading.value = true
     try {
-        const res = await fetch(`${API_BASE_URL}/repositories/`);
-        repositories.value = await res.json();
-    } catch (e) {
-        console.error(e);
-    }
-};
-
-const fetchDevelopers = async () => {
-    try {
-        const res = await fetch(`${API_BASE_URL}/developers/`);
-        developers.value = await res.json();
-    } catch (e) {
-        console.error(e);
-    }
-};
-
-const handleDevAdded = () => {
-    fetchDevelopers();
-    emit('dataUpdated');
-};
-
-const addRepository = async () => {
-    if (!repoName.value) return;
-
-    let cleanName = repoName.value.trim();
-    cleanName = cleanName.replace(/^https?:\/\/github\.com\//, '');
-    cleanName = cleanName.replace(/\.git$/, '');
-
-    if (!cleanName.includes('/')) {
-        repoMessage.value = "Invalid format. Use 'owner/repo'.";
-        return;
-    }
-
-    repoLoading.value = true;
-    repoMessage.value = '';
-
-    try {
-        const res = await fetch(`${API_BASE_URL}/repositories/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: cleanName,
-                token: repoToken.value || null,
-            }),
-        });
-
-        if (!res.ok) {
-            const errText = await res.text();
-            try {
-                const errJson = JSON.parse(errText);
-                throw new Error(errJson.detail || errText);
-            } catch (parseErr) {
-                throw new Error(errText);
-            }
+        const res = await fetch('http://localhost:8000/repositories/')
+        if (res.ok) {
+            repositories.value = await res.json()
         }
-
-        repoMessage.value = 'Repository added successfully!';
-        repoName.value = '';
-        repoToken.value = '';
-        await fetchRepositories();
-        emit('dataUpdated');
-    } catch (e: any) {
-        console.error(e);
-        repoMessage.value = `Error: ${e.message}`;
+    } catch (e) {
+        console.error(e)
     } finally {
-        repoLoading.value = false;
+        loading.value = false
     }
-};
+}
 
+const openFixDialog = (repo: Repository) => {
+    fixingRepo.value = repo
+    newToken.value = ''
+    // We don't show the old token for security
+}
+
+const saveToken = async () => {
+    if (!fixingRepo.value || !newToken.value) return;
+    
+    updating.value = true
+    try {
+        const res = await fetch(`http://localhost:8000/repositories/${fixingRepo.value.id}/token`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: newToken.value })
+        })
+        
+        if (!res.ok) {
+            const err = await res.json()
+            alert(`Error: ${err.detail}`)
+            return
+        }
+        
+        // Success
+        fixingRepo.value = null
+        newToken.value = ''
+        await fetchRepositories() // Refresh list
+    } catch (e) {
+        alert("Failed to update token")
+    } finally {
+        updating.value = false
+    }
+}
+
+// Fetch on mount (and when dialog opens ideally, but simple for now)
 onMounted(() => {
-    fetchRepositories();
-    fetchDevelopers();
-});
+    fetchRepositories()
+})
 </script>
 
 <template>
-    <Card class="h-full">
-        <CardHeader class="pb-3">
-            <CardTitle class="text-xl font-bold flex items-center gap-2">
-                Settings
-            </CardTitle>
-            <CardDescription>Manage team members and tracked repositories</CardDescription>
-        </CardHeader>
-        <CardContent class="grid gap-6">
+  <Dialog v-model:open="open">
+    <DialogTrigger as-child>
+      <Button variant="outline" size="sm" @click="fetchRepositories">
+        <Settings class="mr-2 h-4 w-4" />
+        Repositories
+      </Button>
+    </DialogTrigger>
+    <DialogContent class="sm:max-w-[600px]">
+      <DialogHeader>
+        <DialogTitle>Repository Management</DialogTitle>
+        <DialogDescription>
+          Manage tracked repositories and update access tokens.
+        </DialogDescription>
+      </DialogHeader>
+      
+      <div v-if="loading" class="py-4 text-center">Loading...</div>
+      
+      <div v-else class="py-4 space-y-4 max-h-[60h] overflow-y-auto">
+        <div v-for="repo in repositories" :key="repo.id" 
+             class="flex items-center justify-between p-3 border rounded-lg bg-card text-card-foreground shadow-sm">
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-2 font-medium">
+                    {{ repo.name }}
+                    <Badge :variant="repo.status === 'error' ? 'destructive' : 'default'" class="text-xs">
+                        {{ repo.status }}
+                    </Badge>
+                </div>
+                <div v-if="repo.status === 'error'" class="text-xs text-red-500 font-mono">
+                    {{ repo.last_error }}
+                </div>
+                <div v-else class="text-xs text-muted-foreground">
+                    Last checked: {{ repo.last_checked ? new Date(repo.last_checked).toLocaleDateString() : 'Never' }}
+                </div>
+            </div>
             
-            <!-- Developers Section -->
-            <div>
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-semibold text-sm flex items-center gap-2">
-                        <Users class="w-4 h-4" /> Developers
-                    </h3>
-                    <AddDeveloperForm @developerDataChanged="handleDevAdded" />
-                </div>
-                
-                <div class="bg-muted/30 rounded-lg p-2 max-h-40 overflow-y-auto">
-                    <div v-if="developers.length > 0" class="space-y-1">
-                        <div v-for="dev in developers" :key="dev.id" class="text-sm px-2 py-1 bg-background rounded border flex justify-between items-center">
-                            <span class="font-medium">{{ dev.name }}</span>
-                            <!-- <span class="text-xs text-muted-foreground">{{ dev.git_username }}</span> -->
-                        </div>
-                    </div>
-                     <div v-else class="text-sm text-muted-foreground italic text-center py-2">
-                        No developers added.
-                    </div>
-                </div>
-            </div>
+            <Button size="sm" :variant="repo.status === 'error' ? 'destructive' : 'secondary'" @click="openFixDialog(repo)">
+                {{ repo.status === 'error' ? 'Fix Token' : 'Update Token' }}
+            </Button>
+        </div>
+        
+        <div v-if="repositories.length === 0" class="text-center text-muted-foreground italic">
+            No repositories found. Add one via the backend API.
+        </div>
+      </div>
+      
+      <!-- Nested Dialog Logic (or just inline edit state) -->
+      <!-- Simulating a 'sub-view' within the modal for simplicity since nested dialogs can be tricky in Shadcn without proper setup -->
+      <div v-if="fixingRepo" class="border-t pt-4 mt-4">
+          <h4 class="font-medium mb-2">Update Token for {{ fixingRepo.name }}</h4>
+          <div class="flex gap-2">
+              <Input v-model="newToken" placeholder="ghp_new_token_here..." type="password" />
+              <Button @click="saveToken" :disabled="!newToken || updating">
+                  {{ updating ? 'Verifying...' : 'Save' }}
+              </Button>
+              <Button variant="ghost" @click="fixingRepo = null">Cancel</Button>
+          </div>
+          <p class="text-xs text-muted-foreground mt-1">
+              Validating token immediately. Please ensure it has 'repo' scope.
+          </p>
+      </div>
 
-            <div class="border-t"></div>
-
-            <!-- Repositories Section -->
-            <div>
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-semibold text-sm flex items-center gap-2">
-                         <GitBranch class="w-4 h-4" /> Repositories
-                    </h3>
-                    <Dialog v-model:open="repoDialogVisible">
-                        <DialogTrigger as-child>
-                            <Button size="sm" variant="outline">
-                                <Plus class="mr-2 h-4 w-4" /> Add Repo
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent class="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>Add Repository</DialogTitle>
-                                <DialogDescription>
-                                     Enter the repository name (owner/repo).
-                                </DialogDescription>
-                            </DialogHeader>
-
-                            <div class="grid gap-4 py-4">
-                                <div class="grid grid-cols-4 items-center gap-4">
-                                    <Label for="repoName" class="text-right">Repository</Label>
-                                    <Input id="repoName" v-model="repoName" placeholder="owner/repo" class="col-span-3" />
-                                </div>
-                                <div class="grid grid-cols-4 items-center gap-4">
-                                    <Label for="repoToken" class="text-right">Token</Label>
-                                    <Input id="repoToken" type="password" v-model="repoToken" placeholder="Optional (private)" class="col-span-3" />
-                                </div>
-                            </div>
-
-                            <div v-if="repoMessage" class="mb-4">
-                                <Alert :variant="repoMessage.includes('Error') ? 'destructive' : 'default'">
-                                    <AlertTitle>{{ repoMessage.includes('Error') ? 'Error' : 'Status' }}</AlertTitle>
-                                    <AlertDescription>{{ repoMessage }}</AlertDescription>
-                                </Alert>
-                            </div>
-
-                            <DialogFooter>
-                                <Button variant="secondary" @click="repoDialogVisible = false">Cancel</Button>
-                                <Button @click="addRepository" :loading="repoLoading">Add</Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                </div>
-
-                <div class="bg-muted/30 rounded-lg p-2 max-h-40 overflow-y-auto">
-                     <div v-if="repositories.length > 0" class="space-y-1">
-                        <div v-for="repo in repositories" :key="repo.id" class="text-sm px-2 py-1 bg-background rounded border">
-                            {{ repo.name }}
-                        </div>
-                    </div>
-                    <div v-else class="text-sm text-muted-foreground italic text-center py-2">
-                        No repositories added.
-                    </div>
-                </div>
-            </div>
-
-        </CardContent>
-    </Card>
+    </DialogContent>
+  </Dialog>
 </template>
