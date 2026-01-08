@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sheet';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import RepositoryManager from '@/components/RepositoryManager.vue';
+import DeveloperManager from '@/components/DeveloperManager.vue';
 import TargetedSync from '@/components/TargetedSync.vue';
 import ExportModal from '@/components/ExportModal.vue';
 import TimezoneSelector from '@/components/TimezoneSelector.vue';
@@ -70,6 +71,7 @@ onMounted(() => {
           <div class="flex flex-col gap-2 mt-8">
              <!-- Navigation & Actions -->
              <RepositoryManager />
+             <DeveloperManager />
              <TargetedSync />
              <Button @click="router.push('/reports')" variant="outline" class="w-full justify-start">
                  <FileText class="mr-2 h-4 w-4" />

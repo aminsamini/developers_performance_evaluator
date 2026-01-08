@@ -35,33 +35,97 @@ import asyncio
 @app.on_event("startup")
 async def startup_event():
     """
-    App startup - NO auto-sync. Just load existing data.
-    User must manually click "Sync Data" to fetch new data.
+    App startup.
+    1. Check DB schema for 'is_active' column in developers table and add if missing.
+    2. Check DB schema for 'status' in repositories (already exists).
     """
-    print("Performance Optimizer Backend started. No auto-sync - waiting for manual sync request.")
+    print("Performance Optimizer Backend started.")
+    
+    # Simple Migration Logic for SQLite
+    try:
+        from sqlalchemy import text
+        with database.engine.connect() as conn:
+            # Check if is_active exists in developers
+            try:
+                conn.execute(text("SELECT is_active FROM developers LIMIT 1"))
+            except Exception:
+                print("Migrating DB: Adding 'is_active' column to developers table.")
+                conn.execute(text("ALTER TABLE developers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                conn.commit()
+    except Exception as e:
+        print(f"Migration warning: {e}")
 
 @app.get("/")
 def read_root():
     return {"message": "Performance Optimizer Backend is running!"}
 
+# --- DEVELOPERS ---
+
+class DeveloperUpdate(BaseModel):
+    name: str | None = None
+    git_username: str | None = None
+    wakatime_api_key: str | None = None
+
 @app.post("/developers/")
 def create_developer(developer: DeveloperCreate, db: Session = Depends(database.get_db)):
-    print(f"Received request to create developer: {developer.name}")
     try:
         db_dev = models.Developer(
             name=developer.name,
             git_username=developer.git_username,
-            wakatime_api_key=developer.wakatime_api_key
+            wakatime_api_key=developer.wakatime_api_key,
+            is_active=True
         )
-        print("Adding to session...")
         db.add(db_dev)
-        print("Committing...")
         db.commit()
-        print("Committed successfully.")
         return {"status": "created", "name": db_dev.name}
     except Exception as e:
-        print(f"Error creating developer: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/developers/{developer_id}")
+def update_developer(developer_id: int, update: DeveloperUpdate, db: Session = Depends(database.get_db)):
+    dev = db.query(models.Developer).filter(models.Developer.id == developer_id).first()
+    if not dev:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    
+    if update.name is not None:
+        dev.name = update.name
+    if update.git_username is not None:
+        dev.git_username = update.git_username
+    if update.wakatime_api_key is not None:
+        dev.wakatime_api_key = update.wakatime_api_key
+        
+    db.commit()
+    return {"status": "updated", "developer": dev.name}
+
+@app.delete("/developers/{developer_id}")
+def deactivate_developer(developer_id: int, db: Session = Depends(database.get_db)):
+    dev = db.query(models.Developer).filter(models.Developer.id == developer_id).first()
+    if not dev:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    
+    dev.is_active = False
+    db.commit()
+    return {"status": "deactivated", "developer": dev.name}
+
+@app.post("/developers/{developer_id}/activate")
+def activate_developer(developer_id: int, db: Session = Depends(database.get_db)):
+    dev = db.query(models.Developer).filter(models.Developer.id == developer_id).first()
+    if not dev:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    
+    dev.is_active = True
+    db.commit()
+    return {"status": "activated", "developer": dev.name}
+
+@app.get("/developers/")
+def get_developers(include_inactive: bool = False, db: Session = Depends(database.get_db)):
+    query = db.query(models.Developer)
+    if not include_inactive:
+        query = query.filter(models.Developer.is_active == True)
+    return query.all()
+
+
+# --- REPOSITORIES ---
 
 class RepositoryCreate(BaseModel):
     name: str # owner/repo
@@ -72,37 +136,54 @@ async def create_repository(repo: RepositoryCreate, db: Session = Depends(databa
     # Check if repo exists
     existing = db.query(models.Repository).filter(models.Repository.name == repo.name).first()
     if existing:
+         # If existing but inactive, reactivate it?
+         if existing.status == 'inactive':
+             existing.status = 'active'
+             if repo.token: # Update token if provided
+                 existing.token = repo.token
+             db.commit()
+             return {"status": "reactivated", "name": existing.name}
          raise HTTPException(status_code=400, detail="Repository already exists")
 
-    # Validate Token if provided, or if backend has no default token? 
-    # Logic: If token provided, validate it. If not, maybe validate with default token?
-    # User requirement: "when someone add a repo git the token as well and check if the token works... if doesn't work pass an error."
-    
     gs = collector.GitService()
     token_to_use = repo.token
-    # If no token provided, we fall back to system token? Or require it?
-    # For now, let's assume if provided we MUST validate.
     
     if token_to_use:
         is_valid = await gs.validate_repo_token(repo.name, token_to_use)
         if not is_valid:
             raise HTTPException(status_code=400, detail="Invalid GitHub Token or Repository not reachable.")
     
-    # If no token provided, we proceed (assuming public repository or no verification needed) 
-    
-    db_repo = models.Repository(name=repo.name, token=repo.token)
+    db_repo = models.Repository(name=repo.name, token=repo.token, status='active')
     db.add(db_repo)
     db.commit()
     return {"status": "created", "name": db_repo.name}
 
 @app.get("/repositories/")
-def get_repositories(db: Session = Depends(database.get_db)):
-    return db.query(models.Repository).all()
+def get_repositories(include_inactive: bool = False, db: Session = Depends(database.get_db)):
+    query = db.query(models.Repository)
+    if not include_inactive:
+        query = query.filter(models.Repository.status != 'inactive')
+    return query.all()
 
+@app.delete("/repositories/{repo_id}")
+def deactivate_repository(repo_id: int, db: Session = Depends(database.get_db)):
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    
+    repo.status = 'inactive'
+    db.commit()
+    return {"status": "deactivated", "name": repo.name}
 
-@app.get("/developers/")
-def get_developers(db: Session = Depends(database.get_db)):
-    return db.query(models.Developer).all()
+@app.post("/repositories/{repo_id}/activate")
+def activate_repository(repo_id: int, db: Session = Depends(database.get_db)):
+    repo = db.query(models.Repository).filter(models.Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    
+    repo.status = 'active'
+    db.commit()
+    return {"status": "activated", "name": repo.name}
 class TokenUpdate(BaseModel):
     token: str
 

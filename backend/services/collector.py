@@ -23,9 +23,11 @@ async def sync_daily_metrics(db: Session, target_date: date, optimize: bool = Fa
             print(f"Developer with ID {developer_id} not found.")
             return []
     else:
-        developers = db.query(Developer).all()
+        # Only sync active developers
+        developers = db.query(Developer).filter(Developer.is_active == True).all()
 
-    repositories = db.query(Repository).all()
+    # Only sync active repositories
+    repositories = db.query(Repository).filter(Repository.status == 'active').all()
     results = []
     
     # Determine Sync Mode

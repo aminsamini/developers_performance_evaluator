@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -9,6 +9,7 @@ class Developer(Base):
     name = Column(String, index=True)
     git_username = Column(String, unique=True, index=True)
     wakatime_api_key = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
 
     metrics = relationship("Metric", back_populates="developer")
 
