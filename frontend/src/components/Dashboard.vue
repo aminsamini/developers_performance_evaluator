@@ -17,13 +17,7 @@ import {
 } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '../config';
-import ExportModal from './ExportModal.vue';
-import RepositoryManager from './RepositoryManager.vue';
-import TargetedSync from './TargetedSync.vue';
 import ActivityArchive from './ActivityArchive.vue';
-import TimezoneSelector from './TimezoneSelector.vue';
-import ThemeToggle from './ThemeToggle.vue';
-
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -37,8 +31,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Menu } from 'lucide-vue-next';
+// Removed: Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle
+// Removed: Menu
 
 // Chart.js Imports
 import {
@@ -129,13 +123,21 @@ interface SummaryStats {
   };
 }
 
-const summary = ref<SummaryStats | null>(null);
+import { useGlobalState } from '@/composables/useGlobalState';
+
+const router = useRouter();
+const { developers, selectedTimezone, fetchDevelopers } = useGlobalState();
+
+// Remove local refs that are now global
+// const developers = ref<Developer[]>([]); <-- Removed
+// const selectedTimezone = ref('Asia/Tehran'); <-- Removed
+
+const dateRange = ref({ start: null, end: null });
+const summary = ref<any>(null);
+const loading = ref(true); // general loading state
 const metrics = ref<MetricResult[]>([]);
 const lastSync = ref<string>('');
-const selectedTimezone = ref('Asia/Tehran');
-const router = useRouter();
 const error = ref('');
-const developers = ref<{id: number, name: string}[]>([]);
 
 // Filter state for Activity Archive
 const filterDeveloperId = ref<number | null>(null);
@@ -202,16 +204,8 @@ const syncData = async () => {
     lastSync.value = new Date().toLocaleTimeString();
 };
 
-const fetchDevelopers = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/developers/`);
-    if (response.ok) {
-      developers.value = await response.json();
-    }
-  } catch (err) {
-    console.error('Error fetching developers:', err);
-  }
-};
+// Local fetchDevelopers removed in favor of global state
+// const fetchDevelopers = async () => { ... }
 
 onMounted(() => {
   syncData();
@@ -780,59 +774,8 @@ const radarOptions = {
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
-    <!-- Header -->
-    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-      <div class="flex items-center gap-4">
-        <div class="p-2 bg-primary/10 rounded-lg text-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-candlestick"><path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/></svg>
-        </div>
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight text-foreground">Performance Evaluator</h1>
-          <p class="text-muted-foreground">Team metrics, trends, and health analysis.</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-         <Sheet>
-            <SheetTrigger as-child>
-                <Button variant="ghost" size="icon">
-                    <Menu class="h-6 w-6" />
-                </Button>
-            </SheetTrigger>
-            <SheetContent side="right">
-                <SheetHeader>
-                    <SheetTitle>Menu</SheetTitle>
-                </SheetHeader>
-                <div class="flex flex-col gap-4 mt-8">
-                    <!-- Navigation Items -->
-                    <RepositoryManager />
-                    <TargetedSync />
-                    <Button @click="router.push('/reports')" variant="outline" class="w-full justify-start">
-                        <FileText class="mr-2 h-4 w-4" />
-                        Reports
-                    </Button>
-                    <Button @click="syncData" variant="outline" class="w-full justify-start">
-                        <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': !summary }" />
-                        Sync Data
-                    </Button>
-                    <div class="border-t pt-4 mt-2 flex flex-col gap-4">
-                        <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium">Export</span>
-                            <ExportModal :developers="developers" />
-                        </div>
-                        <div class="flex flex-col gap-2">
-                            <span class="text-sm font-medium">Timezone</span>
-                            <TimezoneSelector @update:timezone="(tz: string) => selectedTimezone = tz" class="w-full" />
-                        </div>
-                    </div>
-                </div>
-            </SheetContent>
-         </Sheet>
-         
-         <ThemeToggle class="z-50 relative" />
-      </div>
-
-    </div>
+  <div class="flex-1 space-y-4 p-8 pt-6">
+    <!-- Removed Header Section (Moved to NavBar) -->
 
     <!-- Summary Stats Row -->
     <div v-if="summary" class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
