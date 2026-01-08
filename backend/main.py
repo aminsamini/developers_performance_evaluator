@@ -7,6 +7,7 @@ from typing import List
 from . import models, database
 from .services import collector
 from .services.export_service import ExportService
+from .routers import reports
 from pydantic import BaseModel
 
 class DeveloperCreate(BaseModel):
@@ -19,10 +20,11 @@ load_dotenv()
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
+app.include_router(reports.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8080", "http://localhost:8080"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

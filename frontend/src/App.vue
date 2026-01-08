@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import Dashboard from './components/Dashboard.vue'
 </script>
 
 <template>
   <div class="min-h-screen bg-background py-6">
-    <Dashboard />
+    <router-view></router-view>
   </div>
 </template>
 

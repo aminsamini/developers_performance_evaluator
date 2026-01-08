@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { 
   RefreshCw, 
   TrendingUp, 
@@ -11,7 +12,8 @@ import {
   Clock,
   Archive,
   Filter,
-  X
+  X,
+  FileText
 } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '../config';
@@ -35,6 +37,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Menu } from 'lucide-vue-next';
 
 // Chart.js Imports
 import {
@@ -129,6 +133,7 @@ const summary = ref<SummaryStats | null>(null);
 const metrics = ref<MetricResult[]>([]);
 const lastSync = ref<string>('');
 const selectedTimezone = ref('Asia/Tehran');
+const router = useRouter();
 const error = ref('');
 const developers = ref<{id: number, name: string}[]>([]);
 
@@ -743,10 +748,17 @@ const radialOptions = {
     maintainAspectRatio: false,
     cutout: '40%', // Size of center hole
     plugins: {
-        legend: { display: false },
+        legend: { 
+            display: true,
+            position: 'right' as const,
+            labels: {
+                usePointStyle: true,
+                boxWidth: 8
+            }
+        },
         tooltip: {
             enabled: true,
-            filter: (item: any) => item.dataIndex === 0 // Show tooltip only for the value segment
+            // filter: (item: any) => item.dataIndex === 0 // Show tooltip only for the value segment
         }
     }
 };
@@ -781,16 +793,37 @@ const radarOptions = {
         </div>
       </div>
       <div class="flex items-center gap-2">
-         <RepositoryManager />
-         <ExportModal :developers="developers" />
+         <Sheet>
+            <SheetTrigger as-child>
+                <Button variant="ghost" size="icon">
+                    <Menu class="h-6 w-6" />
+                </Button>
+            </SheetTrigger>
+            <SheetContent side="right">
+                <SheetHeader>
+                    <SheetTitle>Menu</SheetTitle>
+                </SheetHeader>
+                <div class="flex flex-col gap-4 mt-8">
+                    <!-- Navigation Items -->
+                    <RepositoryManager />
+                    <TargetedSync />
+                    <Button @click="router.push('/reports')" variant="outline" class="w-full justify-start">
+                        <FileText class="mr-2 h-4 w-4" />
+                        Reports
+                    </Button>
+                    <Button @click="syncData" variant="outline" class="w-full justify-start">
+                        <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': !summary }" />
+                        Sync Data
+                    </Button>
+                </div>
+            </SheetContent>
+         </Sheet>
+         
          <ThemeToggle class="z-50 relative" />
+         <ExportModal :developers="developers" />
          <TimezoneSelector @update:timezone="(tz: string) => selectedTimezone = tz" />
-         <TargetedSync />
-         <Button @click="syncData" variant="outline" size="sm">
-            <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': !summary }" />
-            Sync
-         </Button>
       </div>
+
     </div>
 
     <!-- Summary Stats Row -->
