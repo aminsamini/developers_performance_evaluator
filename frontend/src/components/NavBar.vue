@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Menu, FileText, RefreshCw, Box } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
@@ -32,11 +32,8 @@ const { developers, selectedTimezone, isSyncing, fetchDevelopers } = useGlobalSt
 // We can use a global 'triggerSync' ref that Dashboard watches?
 // For now, let's keep the UI structure.
 
-const triggerSync = () => {
-  // TODO: Implement global sync trigger
-  isSyncing.value = true;
-  setTimeout(() => isSyncing.value = false, 2000); // Mock for UI feedback
-};
+// Sync Logic (Placeholder)
+// const triggerSync = () => { ... }
 
 onMounted(() => {
     if (developers.value.length === 0) {
@@ -48,15 +45,25 @@ onMounted(() => {
 <template>
   <nav class="fixed top-4 left-4 right-4 z-50 rounded-full border bg-background/80 backdrop-blur-md shadow-sm px-4 py-2 flex items-center justify-between">
     
-    <!-- Left: Menu & Logo -->
-    <div class="flex items-center gap-3">
+    <!-- Left: Logo -->
+    <div class="flex items-center gap-2 cursor-pointer" @click="router.push('/')">
+      <div class="bg-primary/10 p-1.5 rounded-full">
+         <Box class="h-5 w-5 text-primary" />
+      </div>
+      <span class="font-bold text-lg hidden sm:inline-block">Performance Evaluator</span>
+    </div>
+
+    <!-- Right: Theme Toggle & Menu -->
+    <div class="flex items-center gap-2">
+      <ThemeToggle class="rounded-full" />
+      
       <Sheet>
         <SheetTrigger as-child>
           <Button variant="ghost" size="icon" class="rounded-full">
             <Menu class="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left">
+        <SheetContent side="right">
           <SheetHeader>
             <SheetTitle>Menu</SheetTitle>
           </SheetHeader>
@@ -69,7 +76,6 @@ onMounted(() => {
                  Reports
              </Button>
              <!-- Sync Data Button -->
-             <!-- Note: Real sync needs to be connected to Dashboard refreshment -->
              <Button variant="outline" class="w-full justify-start">
                  <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isSyncing }" />
                  Sync Data
@@ -88,18 +94,6 @@ onMounted(() => {
           </div>
         </SheetContent>
       </Sheet>
-
-      <div class="flex items-center gap-2 cursor-pointer" @click="router.push('/')">
-        <div class="bg-primary/10 p-1.5 rounded-full">
-           <Box class="h-5 w-5 text-primary" />
-        </div>
-        <span class="font-bold text-lg hidden sm:inline-block">Performance Evaluator</span>
-      </div>
-    </div>
-
-    <!-- Right: Theme Toggle -->
-    <div class="flex items-center gap-2">
-      <ThemeToggle class="rounded-full" />
     </div>
 
   </nav>
