@@ -87,7 +87,7 @@ onMounted(() => {
 <template>
   <Dialog v-model:open="open">
     <DialogTrigger as-child>
-      <Button variant="outline" size="sm" @click="fetchRepositories">
+      <Button variant="outline" class="w-full justify-start">
         <Settings class="mr-2 h-4 w-4" />
         Repositories
       </Button>

@@ -67,30 +67,25 @@ onMounted(() => {
           <SheetHeader>
             <SheetTitle>Menu</SheetTitle>
           </SheetHeader>
-          <div class="flex flex-col gap-4 mt-8">
-             <!-- Navigation Items -->
+          <div class="flex flex-col gap-2 mt-8">
+             <!-- Navigation & Actions -->
              <RepositoryManager />
              <TargetedSync />
              <Button @click="router.push('/reports')" variant="outline" class="w-full justify-start">
                  <FileText class="mr-2 h-4 w-4" />
                  Reports
              </Button>
-             <!-- Sync Data Button -->
              <Button variant="outline" class="w-full justify-start">
                  <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isSyncing }" />
                  Sync Data
              </Button>
+             <ExportModal :developers="developers" />
              
-             <div class="border-t pt-4 mt-2 flex flex-col gap-4">
-                 <div class="flex items-center justify-between">
-                     <span class="text-sm font-medium">Export</span>
-                     <ExportModal :developers="developers" />
-                 </div>
-                 <div class="flex flex-col gap-2">
-                     <span class="text-sm font-medium">Timezone</span>
-                     <TimezoneSelector @update:timezone="(tz: string) => selectedTimezone = tz" class="w-full" />
-                 </div>
-             </div>
+             <!-- Separator -->
+             <div class="h-px bg-border my-2"></div>
+             
+             <!-- Settings -->
+             <TimezoneSelector @update:timezone="(tz: string) => selectedTimezone = tz" class="w-full" />
           </div>
         </SheetContent>
       </Sheet>

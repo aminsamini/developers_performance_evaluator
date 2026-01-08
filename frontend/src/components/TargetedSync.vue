@@ -114,7 +114,7 @@ watch(visible, (isOpen) => {
 <template>
   <Dialog v-model:open="visible">
     <DialogTrigger as-child>
-      <Button variant="outline" size="default">
+      <Button variant="outline" class="w-full justify-start">
         <RefreshCw class="mr-2 h-4 w-4" /> Targeted Sync
       </Button>
     </DialogTrigger>

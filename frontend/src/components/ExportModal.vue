@@ -172,7 +172,7 @@ const handleExport = async () => {
 <template>
   <div>
     <!-- Trigger Button -->
-    <Button @click="openModal" variant="outline" size="sm">
+    <Button @click="openModal" variant="outline" class="w-full justify-start">
       <Download class="mr-2 h-4 w-4" />
       Export Report
     </Button>
