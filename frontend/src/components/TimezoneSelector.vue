@@ -45,7 +45,7 @@ watch(selectedTimezone, (newVal) => {
 <template>
   <div class="flex items-center gap-2">
     <Select v-model="selectedTimezone">
-      <SelectTrigger class="w-[180px]">
+      <SelectTrigger class="w-full">
         <SelectValue placeholder="Select timezone" />
       </SelectTrigger>
       <SelectContent>

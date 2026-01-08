@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
+// ... imports
+
+const router = useRouter();
 import { API_BASE_URL } from '../config';
 import ChartCard from '@/components/reports/ChartCard.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Loader2, Filter, AlertCircle } from 'lucide-vue-next';
+import { Loader2, Filter, AlertCircle, ArrowLeft } from 'lucide-vue-next';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import DateRangePicker from '@/components/ui/date-range-picker/DateRangePicker.vue';
 import MultiSelect from '@/components/ui/multi-select/MultiSelect.vue';
@@ -814,9 +818,14 @@ onMounted(() => {
     
     <!-- Header & Filters -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight">Analytics Reports</h1>
-            <p class="text-muted-foreground">Comprehensive deep-dive into productivity metrics.</p>
+        <div class="flex items-center gap-4">
+            <Button variant="ghost" size="icon" @click="router.push('/')">
+                <ArrowLeft class="h-6 w-6" />
+            </Button>
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">Analytics Reports</h1>
+                <p class="text-muted-foreground">Comprehensive deep-dive into productivity metrics.</p>
+            </div>
         </div>
         
         <div class="flex flex-col md:flex-row md:items-center gap-4 bg-muted/40 p-2 rounded-lg">
