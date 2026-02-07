@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { API_BASE_URL } from '../config';
+import { useGlobalState, type Developer } from '@/composables/useGlobalState';
+import { useToast } from '@/components/ui/toast/use-toast';
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -27,8 +29,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { type DateValue, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 
-const developers = ref<{ id: number; name: string }[]>([]);
-const selectedDeveloper = ref<{ id: number; name: string } | null>(null);
+const { developers, fetchDevelopers, triggerRefresh } = useGlobalState();
+const { toast } = useToast();
+
+const selectedDeveloper = ref<Developer | null>(null);
 const selectedDate = ref<DateValue | undefined>(undefined);
 const loading = ref(false);
 const message = ref('');
@@ -45,6 +49,14 @@ const df = new DateFormatter('en-US', {
   dateStyle: 'long',
 })
 
+const hasWakaTimeKey = computed(() => {
+  return selectedDeveloper.value && !!selectedDeveloper.value.wakatime_api_key;
+});
+
+const showWakaTimeWarning = computed(() => {
+  return syncWakatime.value && selectedDeveloper.value && !hasWakaTimeKey.value;
+});
+
 const onDeveloperSelect = (name: string) => {
   const dev = developers.value.find((d) => d.name === name);
   selectedDeveloper.value = dev || null;
@@ -56,15 +68,6 @@ const handleDateSelect = (v: DateValue | undefined) => {
     }
 };
 
-const fetchDevelopers = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/developers/`);
-    developers.value = await response.json();
-  } catch (error) {
-    console.error('Failed to fetch developers:', error);
-  }
-};
-
 const handleSync = async () => {
   if (!syncGithub.value && !syncWakatime.value) {
       message.value = 'Error: Please select at least one service to sync.';
@@ -74,7 +77,6 @@ const handleSync = async () => {
   loading.value = true;
   message.value = '';
   try {
-    // DateValue .toString() returns YYYY-MM-DD by default
     const apiDate = selectedDate.value ? selectedDate.value.toString() : null;
     
     const response = await fetch(`${API_BASE_URL}/sync/target`, {
@@ -91,14 +93,30 @@ const handleSync = async () => {
     });
 
     if (response.ok) {
+        toast({
+          title: "Sync Successful",
+          description: `Metrics synced for ${selectedDeveloper.value ? selectedDeveloper.value.name : 'all developers'} on ${apiDate || 'today'}.`,
+        });
         message.value = 'Sync successful!';
+        triggerRefresh();
         emit('dataUpdated');
+        visible.value = false; // Close dialog on success
     } else {
         const errorText = await response.text();
         message.value = `Error: ${errorText}`;
+        toast({
+          title: "Sync Failed",
+          description: errorText,
+          variant: "destructive",
+        });
     }
   } catch (error) {
     message.value = 'A network error occurred.';
+    toast({
+      title: "Network Error",
+      description: "Could not connect to the backend server.",
+      variant: "destructive",
+    });
   } finally {
     loading.value = false;
   }
@@ -133,12 +151,15 @@ watch(visible, (isOpen) => {
               <SelectTrigger>
                 <SelectValue placeholder="Select a Developer" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent class="z-[110]">
                 <SelectItem v-for="dev in developers" :key="dev.id" :value="dev.name">
                   {{ dev.name }}
                 </SelectItem>
               </SelectContent>
            </Select>
+           <p v-if="showWakaTimeWarning" class="text-[11px] text-amber-600 mt-1">
+             Warning: This developer has no WakaTime API key set.
+           </p>
         </div>
 
         <div class="grid flex-col gap-2">
@@ -156,7 +177,7 @@ watch(visible, (isOpen) => {
                 <span>{{ selectedDate ? df.format(selectedDate.toDate(getLocalTimeZone())) : "Pick a date" }}</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent class="w-auto p-0">
+            <PopoverContent class="w-auto p-0 z-[110]">
               <Calendar 
                 v-model="selectedDate" 
                 mode="single" 

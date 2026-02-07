@@ -126,7 +126,7 @@ interface SummaryStats {
 import { useGlobalState } from '@/composables/useGlobalState';
 
 const router = useRouter();
-const { developers, selectedTimezone, fetchDevelopers } = useGlobalState();
+const { developers, selectedTimezone, fetchDevelopers, refreshSignal } = useGlobalState();
 
 // Remove local refs that are now global
 // const developers = ref<Developer[]>([]); <-- Removed
@@ -210,6 +210,11 @@ const syncData = async () => {
 onMounted(() => {
   syncData();
   fetchDevelopers();
+});
+
+watch(refreshSignal, () => {
+  console.log("Refresh signal received, syncing data...");
+  syncData();
 });
 
 // Chart Logic

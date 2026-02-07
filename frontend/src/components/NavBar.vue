@@ -17,9 +17,12 @@ import TargetedSync from '@/components/TargetedSync.vue';
 import ExportModal from '@/components/ExportModal.vue';
 import TimezoneSelector from '@/components/TimezoneSelector.vue';
 import { useGlobalState } from '@/composables/useGlobalState';
+import { useToast } from '@/components/ui/toast/use-toast';
+import { API_BASE_URL } from '@/config';
 
 const router = useRouter();
-const { developers, selectedTimezone, isSyncing, fetchDevelopers } = useGlobalState();
+const { developers, selectedTimezone, isSyncing, fetchDevelopers, triggerRefresh } = useGlobalState();
+const { toast } = useToast();
 
 // Sync Logic (Placeholder for now, will connect to Dashboard logic or make global)
 // Since sync logic was in Dashboard, we need a way to trigger it.
@@ -33,8 +36,35 @@ const { developers, selectedTimezone, isSyncing, fetchDevelopers } = useGlobalSt
 // We can use a global 'triggerSync' ref that Dashboard watches?
 // For now, let's keep the UI structure.
 
-// Sync Logic (Placeholder)
-// const triggerSync = () => { ... }
+// General Sync Logic
+const handleGeneralSync = async () => {
+    isSyncing.value = true;
+    try {
+        const response = await fetch(`${API_BASE_URL}/sync`, { method: 'POST' });
+        if (response.ok) {
+            toast({
+                title: "Sync Complete",
+                description: "Successfully updated team metrics.",
+            });
+            triggerRefresh();
+        } else {
+            const errorText = await response.text();
+            toast({
+                title: "Sync Failed",
+                description: errorText,
+                variant: "destructive",
+            });
+        }
+    } catch (err) {
+        toast({
+            title: "Network Error",
+            description: "Could not connect to the backend server.",
+            variant: "destructive",
+        });
+    } finally {
+        isSyncing.value = false;
+    }
+};
 
 onMounted(() => {
     if (developers.value.length === 0) {
@@ -77,9 +107,14 @@ onMounted(() => {
                  <FileText class="mr-2 h-4 w-4" />
                  Reports
              </Button>
-             <Button variant="outline" class="w-full justify-start">
+             <Button
+                variant="outline"
+                class="w-full justify-start"
+                @click="handleGeneralSync"
+                :disabled="isSyncing"
+             >
                  <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isSyncing }" />
-                 Sync Data
+                 {{ isSyncing ? 'Syncing...' : 'Sync Data' }}
              </Button>
              <ExportModal :developers="developers" />
              
