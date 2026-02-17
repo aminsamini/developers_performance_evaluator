@@ -11,23 +11,9 @@ use PDO;
 
 class MigrateData extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
     protected $signature = 'app:migrate-data {path}';
-
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'Migrate data from old SQLite database';
 
-    /**
-     * Execute the console command.
-     */
     public function handle()
     {
         $oldDbPath = $this->argument('path');
@@ -40,6 +26,9 @@ class MigrateData extends Command
         $this->info("Connecting to old database...");
         $oldPdo = new PDO("sqlite:{$oldDbPath}");
         $oldPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        // Disable foreign keys for SQLite temporarily
+        DB::statement('PRAGMA foreign_keys=OFF');
 
         DB::beginTransaction();
 
@@ -107,9 +96,14 @@ class MigrateData extends Command
             }
 
             DB::commit();
+
+            // Re-enable foreign keys after migration
+            DB::statement('PRAGMA foreign_keys=ON');
+
             $this->info("Migration completed successfully!");
         } catch (\Exception $e) {
             DB::rollBack();
+            DB::statement('PRAGMA foreign_keys=ON'); // Ensure FK checks are re-enabled even on error
             $this->error("Migration failed: " . $e->getMessage());
             return 1;
         }
