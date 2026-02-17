@@ -16,6 +16,11 @@ class MigrateData extends Command
 
     public function handle()
     {
+        if (!extension_loaded('pdo_sqlite')) {
+            $this->error("The pdo_sqlite extension is not loaded. Please enable it in your php.ini file.");
+            return 1;
+        }
+
         $oldDbPath = $this->argument('path');
 
         if (!file_exists($oldDbPath)) {
@@ -24,8 +29,21 @@ class MigrateData extends Command
         }
 
         $this->info("Connecting to old database...");
-        $oldPdo = new PDO("sqlite:{$oldDbPath}");
-        $oldPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        try {
+            $oldPdo = new PDO("sqlite:{$oldDbPath}");
+            $oldPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        } catch (\PDOException $e) {
+            $this->error("Failed to connect to old database: " . $e->getMessage());
+            return 1;
+        }
+
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            $this->error("Failed to connect to current application database: " . $e->getMessage());
+            $this->info("Make sure database/database.sqlite exists and is writable.");
+            return 1;
+        }
 
         // Disable foreign keys for SQLite temporarily
         DB::statement('PRAGMA foreign_keys=OFF');
