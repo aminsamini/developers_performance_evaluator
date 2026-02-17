@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import NavBar from '@/components/NavBar.vue';
+import Toaster from '@/components/ui/toast/Toaster.vue';
 </script>
 
 <template>
   <div class="min-h-screen bg-background pb-6 pt-24">
     <NavBar />
     <router-view></router-view>
+    <Toaster />
   </div>
 </template>
 
