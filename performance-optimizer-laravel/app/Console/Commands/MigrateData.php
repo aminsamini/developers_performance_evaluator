@@ -11,11 +11,30 @@ use PDO;
 
 class MigrateData extends Command
 {
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
     protected $signature = 'app:migrate-data {path}';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
     protected $description = 'Migrate data from old SQLite database';
 
+    /**
+     * Execute the console command.
+     */
     public function handle()
     {
+        if (!extension_loaded('pdo_sqlite')) {
+            $this->error("The pdo_sqlite extension is not loaded. Please enable it in your php.ini file.");
+            return 1;
+        }
+
         $oldDbPath = $this->argument('path');
 
         if (!file_exists($oldDbPath)) {
@@ -24,11 +43,21 @@ class MigrateData extends Command
         }
 
         $this->info("Connecting to old database...");
-        $oldPdo = new PDO("sqlite:{$oldDbPath}");
-        $oldPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        try {
+            $oldPdo = new PDO("sqlite:{$oldDbPath}");
+            $oldPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        } catch (\PDOException $e) {
+            $this->error("Failed to connect to old database: " . $e->getMessage());
+            return 1;
+        }
 
-        // Disable foreign keys for SQLite temporarily
-        DB::statement('PRAGMA foreign_keys=OFF');
+        try {
+            DB::connection()->getPdo();
+        } catch (\Exception $e) {
+            $this->error("Failed to connect to current application database: " . $e->getMessage());
+            $this->info("Make sure database/database.sqlite exists and is writable.");
+            return 1;
+        }
 
         DB::beginTransaction();
 
@@ -96,14 +125,9 @@ class MigrateData extends Command
             }
 
             DB::commit();
-
-            // Re-enable foreign keys after migration
-            DB::statement('PRAGMA foreign_keys=ON');
-
             $this->info("Migration completed successfully!");
         } catch (\Exception $e) {
             DB::rollBack();
-            DB::statement('PRAGMA foreign_keys=ON'); // Ensure FK checks are re-enabled even on error
             $this->error("Migration failed: " . $e->getMessage());
             return 1;
         }
