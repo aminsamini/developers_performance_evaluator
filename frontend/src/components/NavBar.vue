@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Menu, FileText, RefreshCw, Box } from 'lucide-vue-next';
+import { Menu, FileText, Box } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -19,7 +19,7 @@ import TimezoneSelector from '@/components/TimezoneSelector.vue';
 import { useGlobalState } from '@/composables/useGlobalState';
 
 const router = useRouter();
-const { developers, selectedTimezone, isSyncing, fetchDevelopers } = useGlobalState();
+const { developers, selectedTimezone, fetchDevelopers } = useGlobalState();
 
 // Sync Logic (Placeholder for now, will connect to Dashboard logic or make global)
 // Since sync logic was in Dashboard, we need a way to trigger it.
@@ -77,10 +77,7 @@ onMounted(() => {
                  <FileText class="mr-2 h-4 w-4" />
                  Reports
              </Button>
-             <Button variant="outline" class="w-full justify-start">
-                 <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isSyncing }" />
-                 Sync Data
-             </Button>
+
              <ExportModal :developers="developers" />
              
              <!-- Separator -->

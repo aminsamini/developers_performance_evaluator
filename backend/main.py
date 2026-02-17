@@ -212,33 +212,54 @@ async def update_repo_token(repo_id: int, update: TokenUpdate, db: Session = Dep
 
 class TargetedSyncRequest(BaseModel):
     developer_id: int | None = None
-    date: str | None = None # "YYYY-MM-DD"
+    date_from: str | None = None # "YYYY-MM-DD"
+    date_to: str | None = None   # "YYYY-MM-DD"
     sync_github: bool = True
     sync_wakatime: bool = True
 
 @app.post("/sync/target")
 async def sync_targeted_metrics(request: TargetedSyncRequest, db: Session = Depends(database.get_db)):
     from datetime import date as date_obj
-    from datetime import datetime
+    from datetime import datetime, timedelta
     
-    target_date = date_obj.today()
-    if request.date:
+    # Default to today if no dates provided
+    start_date = date_obj.today()
+    end_date = date_obj.today()
+
+    if request.date_from:
         try:
-             target_date = datetime.strptime(request.date, "%Y-%m-%d").date()
+             start_date = datetime.strptime(request.date_from, "%Y-%m-%d").date()
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="Invalid date_from format. Use YYYY-MM-DD")
             
-    print(f"Received Targeted Sync Request: DevID={request.developer_id}, Date={target_date}")
+    if request.date_to:
+        try:
+             end_date = datetime.strptime(request.date_to, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date_to format. Use YYYY-MM-DD")
     
-    results = await collector.sync_daily_metrics(
-        db, 
-        target_date, 
-        optimize=False, 
-        developer_id=request.developer_id,
-        sync_github=request.sync_github,
-        sync_wakatime=request.sync_wakatime
-    )
-    return {"status": "success", "results": results}
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="date_to must be after or equal to date_from")
+
+    print(f"Received Targeted Sync Request: DevID={request.developer_id}, Range={start_date} to {end_date}")
+    
+    total_results = []
+    current_date = start_date
+    
+    while current_date <= end_date:
+        print(f"Syncing date: {current_date}")
+        day_results = await collector.sync_daily_metrics(
+            db, 
+            current_date, 
+            optimize=False, 
+            developer_id=request.developer_id,
+            sync_github=request.sync_github,
+            sync_wakatime=request.sync_wakatime
+        )
+        total_results.extend(day_results)
+        current_date += timedelta(days=1)
+
+    return {"status": "success", "results": total_results}
 
 
 @app.post("/sync")

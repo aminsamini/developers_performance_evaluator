@@ -30,6 +30,7 @@ const value = computed({
       <PopoverTrigger as-child>
         <Button
           id="date"
+          type="button"
           :variant="'outline'"
           :class="cn(
             'w-[300px] justify-start text-left font-normal',
@@ -50,13 +51,14 @@ const value = computed({
           </template>
         </Button>
       </PopoverTrigger>
-      <PopoverContent class="w-auto p-0" align="start">
-        <Calendar
+      <PopoverContent class="w-auto p-0 z-[200]" align="start">
+        <!-- <Calendar
           v-model="value"
           type="range"
           initial-focus
           :numberOfMonths="2"
-        />
+        /> -->
+        <div class="p-4 bg-white border">DEBUG: POPOVER OPENED</div>
         <!-- Note: Calendar type is inferred from v-model value usually, but passing an object implies Range. 
              Ideally we pass type="range" prop explicitly to CalendarRoot via Calendar -->
       </PopoverContent>

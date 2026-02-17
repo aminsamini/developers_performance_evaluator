@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 import { API_BASE_URL } from '../config';
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -21,39 +20,27 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { RefreshCw, Calendar as CalendarIcon } from 'lucide-vue-next'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
-import { type DateValue, DateFormatter, getLocalTimeZone } from '@internationalized/date'
+import { RefreshCw } from 'lucide-vue-next'
+import DateRangePicker from '@/components/ui/date-range-picker/DateRangePicker.vue'
+import { type DateValue } from '@internationalized/date'
 
 const developers = ref<{ id: number; name: string }[]>([]);
 const selectedDeveloper = ref<{ id: number; name: string } | null>(null);
-const selectedDate = ref<DateValue | undefined>(undefined);
+const selectedDateRange = ref<any>({ start: undefined, end: undefined });
 const loading = ref(false);
 const message = ref('');
 const visible = ref(false);
 const selectedDeveloperName = ref<string>('');
-const isCalendarOpen = ref(false);
 
 const syncGithub = ref(true);
 const syncWakatime = ref(true);
 
 const emit = defineEmits(['dataUpdated']);
 
-const df = new DateFormatter('en-US', {
-  dateStyle: 'long',
-})
-
-const onDeveloperSelect = (name: string) => {
+const onDeveloperSelect = (val: any) => {
+  const name = val as string;
   const dev = developers.value.find((d) => d.name === name);
   selectedDeveloper.value = dev || null;
-};
-
-const handleDateSelect = (v: DateValue | undefined) => {
-    if (v) {
-        isCalendarOpen.value = false;
-    }
 };
 
 const fetchDevelopers = async () => {
@@ -70,12 +57,18 @@ const handleSync = async () => {
       message.value = 'Error: Please select at least one service to sync.';
       return;
   }
+  
+  if (!selectedDateRange.value.start) {
+       message.value = 'Error: Please select a date range.';
+       return;
+  }
 
   loading.value = true;
   message.value = '';
   try {
-    // DateValue .toString() returns YYYY-MM-DD by default
-    const apiDate = selectedDate.value ? selectedDate.value.toString() : null;
+    const startStr = selectedDateRange.value.start.toString();
+    // Use start date as end date if end is missing (single day selection)
+    const endStr = selectedDateRange.value.end ? selectedDateRange.value.end.toString() : startStr;
     
     const response = await fetch(`${API_BASE_URL}/sync/target`, {
       method: 'POST',
@@ -84,7 +77,8 @@ const handleSync = async () => {
       },
       body: JSON.stringify({
         developer_id: selectedDeveloper.value ? selectedDeveloper.value.id : null,
-        date: apiDate,
+        date_from: startStr,
+        date_to: endStr,
         sync_github: syncGithub.value,
         sync_wakatime: syncWakatime.value
       }),
@@ -118,11 +112,11 @@ watch(visible, (isOpen) => {
         <RefreshCw class="mr-2 h-4 w-4" /> Targeted Sync
       </Button>
     </DialogTrigger>
-    <DialogContent class="sm:max-w-[425px] overflow-visible">
+    <DialogContent class="sm:max-w-[500px] overflow-visible z-[150]">
       <DialogHeader>
         <DialogTitle>Targeted Sync</DialogTitle>
         <DialogDescription>
-          Select a developer and/or a date to sync manually.
+          Select a developer and/or a date range to sync manually.
         </DialogDescription>
       </DialogHeader>
 
@@ -142,29 +136,8 @@ watch(visible, (isOpen) => {
         </div>
 
         <div class="grid flex-col gap-2">
-           <Label>Date</Label>
-           <Popover v-model:open="isCalendarOpen">
-            <PopoverTrigger as-child>
-              <Button
-                variant="outline"
-                :class="cn(
-                  'w-full justify-start text-left font-normal',
-                  !selectedDate && 'text-muted-foreground'
-                )"
-              >
-                <CalendarIcon class="mr-2 h-4 w-4" />
-                <span>{{ selectedDate ? df.format(selectedDate.toDate(getLocalTimeZone())) : "Pick a date" }}</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent class="w-auto p-0">
-              <Calendar 
-                v-model="selectedDate" 
-                mode="single" 
-                class="rounded-md border"
-                @update:modelValue="handleDateSelect"
-              />
-            </PopoverContent>
-           </Popover>
+           <Label>Date Range</Label>
+           <DateRangePicker v-model="selectedDateRange" class="w-full" />
         </div>
         
         <div class="grid flex-col gap-2">
@@ -199,7 +172,7 @@ watch(visible, (isOpen) => {
          <Button variant="secondary" @click="visible = false">Cancel</Button>
          <Button @click="handleSync" :disabled="loading">
             <span v-if="loading">Syncing...</span>
-            <span v-else>Sync</span>
+            <span v-else>Sync Range</span>
          </Button>
       </DialogFooter>
     </DialogContent>
