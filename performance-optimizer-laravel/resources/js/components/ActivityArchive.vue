@@ -72,7 +72,10 @@ const fetchHistory = async (page: number = 1) => {
     }
 
     const response = await fetch(url, {
-      headers: { 'Cache-Control': 'no-cache' }
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Accept': 'application/json'
+      }
     });
     if (!response.ok) throw new Error(await response.text());
     const result = await response.json();

@@ -75,7 +75,7 @@ class MetricController extends Controller
                 'date' => $date,
                 'items' => $dayMetrics->map(function ($m) {
                     return [
-                        'developer' => $m->developer->name,
+                        'developer' => $m->developer?->name ?? 'Unknown',
                         'developer_id' => $m->developer_id,
                         'commits' => $m->commits_count,
                         'lines_added' => $m->lines_added,
@@ -195,8 +195,8 @@ class MetricController extends Controller
         $developerTotals = [];
 
         foreach ($metrics as $m) {
-            $dStr = $m.date->toDateString();
-            $devName = $m->developer->name;
+            $dStr = $m->date->toDateString();
+            $devName = $m->developer?->name ?? 'Unknown';
 
             if (!isset($dailyData[$dStr])) {
                 $dailyData[$dStr] = ['total_score' => 0, 'total_commits' => 0, 'total_coding_mins' => 0, 'count' => 0, 'items' => []];
@@ -268,7 +268,7 @@ class MetricController extends Controller
                 'score' => $maxScoreDay['total_score'],
                 'commits' => $maxScoreDay['total_commits'],
                 'active_devs' => $maxScoreDay['count'],
-                'top_contributor' => $topDev?->developer->name ?? 'None',
+                'top_contributor' => $topDev?->developer?->name ?? 'None',
             ];
         }
 

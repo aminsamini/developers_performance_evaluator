@@ -111,7 +111,7 @@ class ReportController extends Controller
                 }
 
                 // Developer Stats
-                $devName = $m->developer->name;
+                $devName = $m->developer?->name ?? 'Unknown';
                 if (!isset($developerStats[$devName])) {
                     $developerStats[$devName] = [
                         'name' => $devName,

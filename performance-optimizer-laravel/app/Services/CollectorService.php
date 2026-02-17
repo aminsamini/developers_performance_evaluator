@@ -153,7 +153,6 @@ class CollectorService
         $startDate = $today->copy()->subDays($days);
         $results = [];
         for ($date = $startDate; $date->lte($today); $date->addDay()) {
-            if ($additive && Metric::where('date', $date->toDateString())->exists()) { continue; }
             $dayResults = $this->syncDailyMetrics($date->copy(), $additive);
             $results = array_merge($results, $dayResults);
         }
