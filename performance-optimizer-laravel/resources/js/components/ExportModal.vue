@@ -41,14 +41,14 @@ const groupByDeveloper = ref(false);
 const includeRawWakatime = ref(false);
 const developerSearch = ref('');
 
-// Initialize with last 7 days
+// Initialize with last 60 days
 const initializeDates = () => {
   const today = new Date();
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  const sixtyDaysAgo = new Date(today);
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
   toDate.value = today.toISOString().split('T')[0];
-  fromDate.value = weekAgo.toISOString().split('T')[0];
+  fromDate.value = sixtyDaysAgo.toISOString().split('T')[0];
 };
 
 // Computed properties

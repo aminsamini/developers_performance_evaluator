@@ -2,7 +2,11 @@
 import type { DialogTriggerProps } from "reka-ui"
 import { DialogTrigger } from "reka-ui"
 
-const props = defineProps<DialogTriggerProps>()
+interface Props extends DialogTriggerProps {}
+
+const props = withDefaults(defineProps<Props>(), {
+  asChild: false,
+})
 </script>
 
 <template>

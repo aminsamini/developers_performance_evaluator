@@ -1,17 +1,26 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from "vue"
 import type { BadgeVariants } from "."
+import { Primitive, type PrimitiveProps } from "reka-ui"
 import { cn } from "@/lib/utils"
 import { badgeVariants } from "."
 
-const props = defineProps<{
+interface Props extends PrimitiveProps {
   variant?: BadgeVariants["variant"]
   class?: HTMLAttributes["class"]
-}>()
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  as: "div",
+})
 </script>
 
 <template>
-  <div :class="cn(badgeVariants({ variant }), props.class)">
+  <Primitive
+    :as="as"
+    :as-child="asChild"
+    :class="cn(badgeVariants({ variant: variant }), props.class)"
+  >
     <slot />
-  </div>
+  </Primitive>
 </template>

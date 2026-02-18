@@ -150,7 +150,7 @@ class MetricController extends Controller
 
     public function summary(Request $request)
     {
-        $days = (int)$request->query('days', 7);
+        $days = (int)$request->query('days', 60);
         $developerId = $request->query('developer_id');
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
@@ -182,12 +182,14 @@ class MetricController extends Controller
         }
 
         $query = Metric::with('developer')
-            ->whereIn('date', $currentDates)
+            ->where('date', '>=', $currentDates[0])
+            ->where('date', '<=', end($currentDates) . ' 23:59:59')
             ->when($developerId, fn($q) => $q->where('developer_id', $developerId));
 
         $metrics = $query->get();
 
-        $prevMetrics = Metric::whereIn('date', $prevDates)
+        $prevMetrics = Metric::where('date', '>=', $prevDates[0])
+            ->where('date', '<=', end($prevDates) . ' 23:59:59')
             ->when($developerId, fn($q) => $q->where('developer_id', $developerId))
             ->get();
 

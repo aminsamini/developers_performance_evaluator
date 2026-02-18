@@ -14,11 +14,14 @@ import {
   Archive,
   Filter,
   X,
-  FileText
+  FileText,
+  Trophy,
+  User
 } from 'lucide-vue-next';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '../config';
 import ActivityArchive from '@/components/ActivityArchive.vue';
+import RepositoryManager from '@/components/RepositoryManager.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -167,7 +170,7 @@ const fetchExampleData = async () => {
     // Fallback or Initial Data
 };
 
-const fetchSummary = async (days: number = 7, developerId: number | null = null) => {
+const fetchSummary = async (days: number = 60, developerId: number | null = null) => {
   try {
     let url = `${API_BASE_URL}/metrics/summary?days=${days}`;
     if (developerId) {
@@ -233,9 +236,9 @@ const filteredComboboxDevelopers = computed(() => {
 
 // Per-chart filter states
 const chartFilters = ref<Record<string, { days: number; developerId: number | null; developerIds?: number[]; isComparison?: boolean; dateA?: string; dateB?: string; selectedFactors?: string[] }>>({
-  trend: { days: 7, developerId: null, developerIds: [] },
-  distribution: { days: 7, developerId: null },
-  health: { days: 7, developerId: null, isComparison: false, dateA: new Date().toISOString().split('T')[0], dateB: new Date().toISOString().split('T')[0], selectedFactors: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'] }
+  trend: { days: 60, developerId: null, developerIds: [] },
+  distribution: { days: 60, developerId: null },
+  health: { days: 60, developerId: null, isComparison: false, dateA: new Date().toISOString().split('T')[0], dateB: new Date().toISOString().split('T')[0], selectedFactors: ['Score', 'Commits', 'Consistency', 'Team Size', 'Coverage'] }
 });
 
 // Per-chart data stores (separate from main summary)
@@ -326,7 +329,7 @@ const toggleChartFactor = (factor: string) => {
 const selectedSummary = ref<string | null>(null);
 const summaryDetails = ref<any[]>([]); // items for the list/table
 const summaryFilters = ref({
-  days: 30, // default to 30 days for details
+  days: 60, // default to 60 days for details
   developerId: null as number | null
 });
 
@@ -832,7 +835,7 @@ const radarOptions = {
         <Card class="flex flex-col cursor-pointer transition-all hover:shadow-lg hover:border-primary/50" @click="selectedChart = 'trend'">
             <CardHeader class="pb-2">
                 <CardTitle>Performance Trend</CardTitle>
-                <div class="text-sm text-muted-foreground">Last 7 Days</div>
+                <div class="text-sm text-muted-foreground">Last 60 Days</div>
             </CardHeader>
             <CardContent class="pb-2">
                 <div class="h-[250px] w-full">
@@ -852,7 +855,7 @@ const radarOptions = {
         <Card class="flex flex-col cursor-pointer transition-all hover:shadow-lg hover:border-primary/50" @click="selectedChart = 'distribution'">
             <CardHeader class="pb-2">
                 <CardTitle>Activity Distribution</CardTitle>
-                <div class="text-sm text-muted-foreground">Language & Work Type</div>
+                <div class="text-sm text-muted-foreground">Last 60 Days</div>
             </CardHeader>
             <CardContent class="pb-2">
                 <div class="h-[250px] w-full">
