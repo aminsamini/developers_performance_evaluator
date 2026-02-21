@@ -8,13 +8,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Settings, Power, PowerOff, Plus, Pencil } from 'lucide-vue-next'
+import { Settings, Power, PowerOff, Plus, Pencil, Plug, RefreshCw } from 'lucide-vue-next'
+import { useToast } from '@/components/ui/toast/use-toast'
 import { API_BASE_URL } from '../config';
 
 interface Repository {
@@ -29,6 +29,17 @@ const open = ref(false)
 const repositories = ref<Repository[]>([])
 const loading = ref(false)
 const includeInactive = ref(true)
+const testingRepoId = ref<number | null>(null)
+const { toast } = useToast()
+
+const props = withDefaults(defineProps<{ onOpen?: () => void; hideTrigger?: boolean }>(), { onOpen: undefined, hideTrigger: false });
+
+const openDialog = () => {
+  open.value = true;
+  setTimeout(() => { props.onOpen?.(); }, 50);
+};
+
+defineExpose({ openDialog });
 
 // Create / Edit State
 const isCreating = ref(false)
@@ -133,19 +144,35 @@ const toggleStatus = async (repo: Repository) => {
     }
 }
 
+const testConnection = async (repo: Repository) => {
+    testingRepoId.value = repo.id
+    try {
+        const res = await fetch(`${API_BASE_URL}/repositories/${repo.id}/test`, { method: 'POST' })
+        const data = await res.json()
+        toast({
+            title: data.reachable ? '✅ Connection OK' : '❌ Connection Failed',
+            description: data.message,
+            variant: data.reachable ? 'default' : 'destructive',
+        })
+        fetchRepositories()
+    } catch (e) {
+        toast({ title: 'Error', description: 'Network error during test.', variant: 'destructive' })
+    } finally {
+        testingRepoId.value = null
+    }
+}
+
 onMounted(() => {
     fetchRepositories()
 })
 </script>
 
 <template>
+  <Button v-if="!hideTrigger" variant="outline" class="w-full justify-start" @click="openDialog">
+    <Settings class="mr-2 h-4 w-4" />
+    Repositories
+  </Button>
   <Dialog v-model:open="open">
-    <DialogTrigger as-child>
-      <Button variant="outline" class="w-full justify-start">
-        <Settings class="mr-2 h-4 w-4" />
-        Repositories
-      </Button>
-    </DialogTrigger>
     <DialogContent class="sm:max-w-[700px]">
       <DialogHeader>
         <DialogTitle>Repository Management</DialogTitle>
@@ -187,7 +214,11 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" @click="testConnection(repo)" title="Test Connection" :disabled="testingRepoId === repo.id">
+                        <Plug v-if="testingRepoId !== repo.id" class="h-4 w-4 text-blue-500" />
+                        <RefreshCw v-else class="h-4 w-4 animate-spin text-muted-foreground" />
+                    </Button>
                     <Button variant="ghost" size="icon" @click="startEdit(repo)" title="Edit Token">
                         <Pencil class="h-4 w-4 text-primary" />
                     </Button>

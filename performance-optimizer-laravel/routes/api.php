@@ -21,6 +21,7 @@ Route::prefix('repositories')->group(function () {
     Route::delete('/{repository}', [RepositoryController::class, 'destroy']);
     Route::post('/{repository}/activate', [RepositoryController::class, 'activate']);
     Route::put('/{repository}/token', [RepositoryController::class, 'updateToken']);
+    Route::post('/{repository}/test', [RepositoryController::class, 'testConnection']);
 });
 
 Route::prefix('metrics')->group(function () {

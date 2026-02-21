@@ -8,7 +8,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,6 +28,15 @@ const open = ref(false)
 const developers = ref<Developer[]>([])
 const loading = ref(false)
 const includeInactive = ref(true)
+
+const props = withDefaults(defineProps<{ onOpen?: () => void; hideTrigger?: boolean }>(), { onOpen: undefined, hideTrigger: false });
+
+const openDialog = () => {
+  open.value = true;
+  setTimeout(() => { props.onOpen?.(); }, 50);
+};
+
+defineExpose({ openDialog });
 
 // Edit/Add State
 const editingDev = ref<Developer | null>(null)
@@ -148,13 +156,11 @@ onMounted(() => {
 </script>
 
 <template>
+  <Button v-if="!hideTrigger" variant="outline" class="w-full justify-start" @click="openDialog">
+    <Users class="mr-2 h-4 w-4" />
+    Developers
+  </Button>
   <Dialog v-model:open="open">
-    <DialogTrigger as-child>
-      <Button variant="outline" class="w-full justify-start">
-        <Users class="mr-2 h-4 w-4" />
-        Developers
-      </Button>
-    </DialogTrigger>
     <DialogContent class="sm:max-w-[700px]">
       <DialogHeader>
         <DialogTitle>Developer Management</DialogTitle>

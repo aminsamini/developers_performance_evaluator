@@ -11,12 +11,14 @@ class SyncController extends Controller
 {
     public function sync(CollectorService $collectorService)
     {
+        set_time_limit(600); // Allow up to 10 minutes for 7-day sync
         $results = $collectorService->syncHistoricalData(7, true);
         return response()->json(['status' => 'success', 'results' => $results]);
     }
 
-    public function targetedSync(Request $request)
+    public function targetedSync(Request $request, CollectorService $collectorService)
     {
+        set_time_limit(300); // Allow up to 5 minutes for sync
         $validated = $request->validate([
             'developer_id' => 'nullable|integer',
             'date_from' => 'nullable|date_format:Y-m-d',
@@ -28,15 +30,25 @@ class SyncController extends Controller
         $dateFrom = $validated['date_from'] ?? now()->toDateString();
         $dateTo = $validated['date_to'] ?? now()->toDateString();
 
-        SyncDeveloperMetrics::dispatch(
-            $dateFrom,
-            $dateTo,
-            $validated['developer_id'] ?? null,
-            $validated['sync_github'] ?? true,
-            $validated['sync_wakatime'] ?? true,
-            false // optimize
-        );
+        $start = Carbon::parse($dateFrom);
+        $end = Carbon::parse($dateTo);
+        $allResults = [];
 
-        return response()->json(['status' => 'success', 'message' => 'Sync job dispatched']);
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $dayResults = $collectorService->syncDailyMetrics(
+                $date->copy(),
+                false, // optimize
+                $validated['developer_id'] ?? null,
+                $validated['sync_github'] ?? true,
+                $validated['sync_wakatime'] ?? true
+            );
+            $allResults = array_merge($allResults, $dayResults);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Sync completed',
+            'results' => $allResults,
+        ]);
     }
 }
