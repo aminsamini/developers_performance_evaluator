@@ -9,8 +9,11 @@ use Maatwebsite\Excel\Concerns\WithMapping;
 
 class MetricsExport implements FromCollection, WithHeadings, WithMapping
 {
-    public function __construct(protected $metrics)
+    public $metrics;
+
+    public function __construct($metrics)
     {
+        $this->metrics = $metrics;
     }
 
     /**
@@ -38,14 +41,14 @@ class MetricsExport implements FromCollection, WithHeadings, WithMapping
     public function map($metric): array
     {
         return [
-            $metric->developer->name,
-            $metric->date->toDateString(),
-            $metric->commits_count,
-            $metric->lines_added,
-            $metric->lines_deleted,
-            $metric->files_modified,
-            floor($metric->coding_time_seconds / 60),
-            $metric->score,
+            $metric->developer?->name ?? 'Unknown',
+            $metric->date instanceof \Carbon\Carbon ? $metric->date->toDateString() : ($metric->date ?? 'N/A'),
+            $metric->commits_count ?? 0,
+            $metric->lines_added ?? 0,
+            $metric->lines_deleted ?? 0,
+            $metric->files_modified ?? 0,
+            floor(($metric->coding_time_seconds ?? 0) / 60),
+            $metric->score ?? 0,
         ];
     }
 }

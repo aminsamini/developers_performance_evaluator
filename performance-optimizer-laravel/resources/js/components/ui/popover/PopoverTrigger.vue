@@ -2,7 +2,9 @@
 import type { PopoverTriggerProps } from "reka-ui"
 import { PopoverTrigger } from "reka-ui"
 
-const props = defineProps<PopoverTriggerProps>()
+const props = withDefaults(defineProps<PopoverTriggerProps>(), {
+  asChild: false,
+})
 </script>
 
 <template>

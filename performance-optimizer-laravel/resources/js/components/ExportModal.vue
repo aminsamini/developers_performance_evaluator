@@ -23,6 +23,8 @@ interface Developer {
 
 const props = defineProps<{
   developers: Developer[];
+  onOpen?: () => void;
+  hideTrigger?: boolean;
 }>();
 
 // Modal state
@@ -41,14 +43,14 @@ const groupByDeveloper = ref(false);
 const includeRawWakatime = ref(false);
 const developerSearch = ref('');
 
-// Initialize with last 7 days
+// Initialize with last 60 days
 const initializeDates = () => {
   const today = new Date();
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  const sixtyDaysAgo = new Date(today);
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
   toDate.value = today.toISOString().split('T')[0];
-  fromDate.value = weekAgo.toISOString().split('T')[0];
+  fromDate.value = sixtyDaysAgo.toISOString().split('T')[0];
 };
 
 // Computed properties
@@ -92,7 +94,10 @@ const openModal = () => {
   selectedDeveloperIds.value = [];
   exportError.value = '';
   isOpen.value = true;
+  setTimeout(() => { props.onOpen?.(); }, 50);
 };
+
+defineExpose({ openModal });
 
 const toggleDeveloper = (id: number) => {
   const index = selectedDeveloperIds.value.indexOf(id);
@@ -172,7 +177,7 @@ const handleExport = async () => {
 <template>
   <div>
     <!-- Trigger Button -->
-    <Button @click="openModal" variant="outline" class="w-full justify-start">
+    <Button v-if="!hideTrigger" @click="openModal" variant="outline" class="w-full justify-start">
       <Download class="mr-2 h-4 w-4" />
       Export Report
     </Button>

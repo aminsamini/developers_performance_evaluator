@@ -27,11 +27,11 @@ class MetricController extends Controller
         }
 
         if ($dateFrom) {
-            $query->where('date', '>=', $dateFrom);
+            $query->whereDate('date', '>=', $dateFrom);
         }
 
         if ($dateTo) {
-            $query->where('date', '<=', $dateTo);
+            $query->whereDate('date', '<=', $dateTo);
         }
 
         if ($scoreMin !== null) {
@@ -109,7 +109,7 @@ class MetricController extends Controller
     {
         $developer = Developer::findOrFail($developerId);
         $metric = Metric::where('developer_id', $developerId)
-            ->where('date', $dateStr)
+            ->whereDate('date', $dateStr)
             ->firstOrFail();
 
         $breakdown = $scoreCalculator->getScoreBreakdown(
@@ -150,7 +150,7 @@ class MetricController extends Controller
 
     public function summary(Request $request)
     {
-        $days = (int)$request->query('days', 7);
+        $days = (int)$request->query('days', 60);
         $developerId = $request->query('developer_id');
         $dateFrom = $request->query('date_from');
         $dateTo = $request->query('date_to');
@@ -182,12 +182,14 @@ class MetricController extends Controller
         }
 
         $query = Metric::with('developer')
-            ->whereIn('date', $currentDates)
+            ->whereDate('date', '>=', $currentDates[0])
+            ->whereDate('date', '<=', end($currentDates))
             ->when($developerId, fn($q) => $q->where('developer_id', $developerId));
 
         $metrics = $query->get();
 
-        $prevMetrics = Metric::whereIn('date', $prevDates)
+        $prevMetrics = Metric::whereDate('date', '>=', $prevDates[0])
+            ->whereDate('date', '<=', end($prevDates))
             ->when($developerId, fn($q) => $q->where('developer_id', $developerId))
             ->get();
 

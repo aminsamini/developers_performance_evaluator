@@ -31,7 +31,7 @@ class CollectorService
 
         foreach ($developers as $dev) {
             $metric = Metric::where('developer_id', $dev->id)
-                ->where('date', $dateStr)
+                ->whereDate('date', $dateStr)
                 ->first();
 
             if ($optimize && $metric && $metric->updated_at->toDateString() > $dateStr) {
@@ -79,7 +79,9 @@ class CollectorService
                             $filesModified += $stats['files_modified'] ?? 0;
                         } catch (Exception $e) {
                             $repo->update(['status' => 'error', 'last_error' => $e->getMessage(), 'last_checked' => now()]);
-                            throw $e;
+                            \Log::warning("Repo {$repo->name} failed for {$dev->name}: " . $e->getMessage());
+                            // Continue to next repo instead of failing the entire developer
+                            continue;
                         }
                     }
                 }
@@ -132,15 +134,19 @@ class CollectorService
 
                 if ($startWorkTime && $endWorkTime && $startWorkTime->gt($endWorkTime)) { [$startWorkTime, $endWorkTime] = [$endWorkTime, $startWorkTime]; }
 
-                $metric = Metric::updateOrCreate(
-                    ['developer_id' => $dev->id, 'date' => $dateStr],
-                    ['commits_count' => $totalCommits, 'lines_added' => $linesAdded, 'lines_deleted' => $linesDeleted, 'files_modified' => $filesModified, 'churn_score' => $churnScore, 'coding_time_seconds' => $codingSeconds, 'active_coding_seconds' => $activeCodingSeconds, 'deep_work_seconds' => $deepWorkSeconds, 'start_work_time' => $startWorkTime, 'end_work_time' => $endWorkTime, 'project_focus_ratio' => $projectFocusRatio, 'context_switches' => $contextSwitches, 'wakatime_data' => $wakaTimeData, 'score' => $score]
+                // Delete existing metric if present, then create fresh
+                Metric::where('developer_id', $dev->id)->whereDate('date', $dateStr)->delete();
+
+                $metric = Metric::create(
+                    ['developer_id' => $dev->id, 'date' => $dateStr, 'commits_count' => $totalCommits, 'lines_added' => $linesAdded, 'lines_deleted' => $linesDeleted, 'files_modified' => $filesModified, 'churn_score' => $churnScore, 'coding_time_seconds' => $codingSeconds, 'active_coding_seconds' => $activeCodingSeconds, 'deep_work_seconds' => $deepWorkSeconds, 'start_work_time' => $startWorkTime, 'end_work_time' => $endWorkTime, 'project_focus_ratio' => $projectFocusRatio, 'context_switches' => $contextSwitches, 'wakatime_data' => $wakaTimeData, 'score' => $score]
                 );
 
                 DB::commit();
                 $results[] = ['developer' => $dev->name, 'date' => $dateStr, 'commits' => $totalCommits, 'coding_time' => floor($codingSeconds / 60) . ' mins', 'start' => $startWorkTime?->toIso8601String(), 'end' => $endWorkTime?->toIso8601String(), 'score' => $score];
             } catch (Exception $e) {
                 DB::rollBack();
+                \Log::error("Sync failed for {$dev->name} on {$dateStr}: " . $e->getMessage());
+                $results[] = ['developer' => $dev->name, 'date' => $dateStr, 'status' => 'error', 'error' => $e->getMessage()];
                 continue;
             }
         }

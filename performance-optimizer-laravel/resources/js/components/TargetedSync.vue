@@ -12,7 +12,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import {
   Select,
@@ -36,7 +35,16 @@ const selectedDeveloper = ref<Developer | null>(null);
 const selectedDate = ref<DateValue | undefined>(undefined);
 const loading = ref(false);
 const message = ref('');
+const syncResults = ref<any[]>([]);
+const syncDone = ref(false);
+const expandedErrors = ref<number[]>([]);
 const visible = ref(false);
+
+const toggleExpand = (index: number) => {
+  const idx = expandedErrors.value.indexOf(index);
+  if (idx >= 0) expandedErrors.value.splice(idx, 1);
+  else expandedErrors.value.push(index);
+};
 const selectedDeveloperName = ref<string>('');
 const isCalendarOpen = ref(false);
 
@@ -44,6 +52,15 @@ const syncGithub = ref(true);
 const syncWakatime = ref(true);
 
 const emit = defineEmits(['dataUpdated']);
+
+const props = withDefaults(defineProps<{ onOpen?: () => void; hideTrigger?: boolean }>(), { onOpen: undefined, hideTrigger: false });
+
+const openDialog = () => {
+  visible.value = true;
+  setTimeout(() => { props.onOpen?.(); }, 50);
+};
+
+defineExpose({ openDialog });
 
 const df = new DateFormatter('en-US', {
   dateStyle: 'long',
@@ -76,6 +93,9 @@ const handleSync = async () => {
 
   loading.value = true;
   message.value = '';
+  syncResults.value = [];
+  syncDone.value = false;
+  expandedErrors.value = [];
   try {
     const apiDate = selectedDate.value ? selectedDate.value.toString() : null;
 
@@ -86,21 +106,30 @@ const handleSync = async () => {
       },
       body: JSON.stringify({
         developer_id: selectedDeveloper.value ? selectedDeveloper.value.id : null,
-        date: apiDate,
+        date_from: apiDate,
+        date_to: apiDate,
         sync_github: syncGithub.value,
         sync_wakatime: syncWakatime.value
       }),
     });
 
     if (response.ok) {
-        toast({
-          title: "Sync Successful",
-          description: `Metrics synced for ${selectedDeveloper.value ? selectedDeveloper.value.name : 'all developers'} on ${apiDate || 'today'}.`,
-        });
-        message.value = 'Sync successful!';
+        const data = await response.json();
+        const results = data.results || [];
+        syncResults.value = results;
+        syncDone.value = true;
+        const errors = results.filter((r: any) => r.status === 'error');
+        const successes = results.filter((r: any) => !r.status || r.status !== 'error');
+
+        if (errors.length > 0) {
+          message.value = `Sync completed: ${successes.length} succeeded, ${errors.length} failed.`;
+        } else if (successes.length > 0) {
+          message.value = `Sync successful! ${successes.length} developer(s) synced.`;
+        } else {
+          message.value = 'No data synced. Check developer/repo configuration.';
+        }
         triggerRefresh();
         emit('dataUpdated');
-        visible.value = false; // Close dialog on success
     } else {
         const errorText = await response.text();
         message.value = `Error: ${errorText}`;
@@ -130,12 +159,10 @@ watch(visible, (isOpen) => {
 </script>
 
 <template>
+  <Button v-if="!hideTrigger" variant="outline" class="w-full justify-start" @click="openDialog">
+    <RefreshCw class="mr-2 h-4 w-4" /> Targeted Sync
+  </Button>
   <Dialog v-model:open="visible">
-    <DialogTrigger as-child>
-      <Button variant="outline" class="w-full justify-start">
-        <RefreshCw class="mr-2 h-4 w-4" /> Targeted Sync
-      </Button>
-    </DialogTrigger>
     <DialogContent class="sm:max-w-[425px] overflow-visible">
       <DialogHeader>
         <DialogTitle>Targeted Sync</DialogTitle>
@@ -210,18 +237,41 @@ watch(visible, (isOpen) => {
       </div>
 
       <div v-if="message" class="mb-4">
-         <Alert :variant="message.includes('Error') ? 'destructive' : 'default'">
-           <AlertTitle>{{ message.includes('Error') ? 'Error' : 'Status' }}</AlertTitle>
+         <Alert :variant="message.includes('Error') || message.includes('failed') ? 'destructive' : 'default'">
+           <AlertTitle>{{ message.includes('Error') || message.includes('failed') ? 'Error' : 'Status' }}</AlertTitle>
            <AlertDescription>{{ message }}</AlertDescription>
          </Alert>
       </div>
 
+      <!-- Sync Results -->
+      <div v-if="syncResults.length > 0" class="mb-4 max-h-48 overflow-y-auto">
+        <div class="text-xs font-medium mb-2 text-muted-foreground">Results:</div>
+        <div v-for="(r, i) in syncResults" :key="i" class="text-xs py-1.5 border-b last:border-0">
+          <div class="flex items-center justify-between">
+            <span class="font-medium">{{ r.developer }}</span>
+            <span v-if="r.status === 'error'" class="text-red-500 cursor-pointer flex items-center gap-1" @click="toggleExpand(i)">
+              ❌ Error
+              <svg :class="['h-3 w-3 transition-transform', expandedErrors.includes(i) ? 'rotate-180' : '']" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+              </svg>
+            </span>
+            <span v-else class="text-green-600">✅ {{ r.commits }} commits, {{ r.coding_time }}</span>
+          </div>
+          <div v-if="r.status === 'error' && expandedErrors.includes(i)" class="mt-1.5 p-2 rounded bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-[11px] font-mono break-all">
+            {{ r.error }}
+          </div>
+        </div>
+      </div>
+
       <DialogFooter>
-         <Button variant="secondary" @click="visible = false">Cancel</Button>
-         <Button @click="handleSync" :disabled="loading">
-            <span v-if="loading">Syncing...</span>
-            <span v-else>Sync</span>
-         </Button>
+         <Button v-if="syncDone" variant="secondary" @click="visible = false; syncDone = false; syncResults = []; message = ''">Close</Button>
+         <template v-else>
+           <Button variant="secondary" @click="visible = false">Cancel</Button>
+           <Button @click="handleSync" :disabled="loading">
+              <span v-if="loading">Syncing...</span>
+              <span v-else>Sync</span>
+           </Button>
+         </template>
       </DialogFooter>
     </DialogContent>
   </Dialog>

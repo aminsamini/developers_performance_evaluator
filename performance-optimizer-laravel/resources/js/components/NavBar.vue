@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { router } from '@inertiajs/vue3';
-import { Menu, FileText, RefreshCw, Box } from 'lucide-vue-next';
+import { Menu, FileText, RefreshCw, Box, Settings, Users, Download } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -23,6 +23,15 @@ import { API_BASE_URL } from '@/config';
 const { developers, selectedTimezone, isSyncing, fetchDevelopers, triggerRefresh } = useGlobalState();
 const { toast } = useToast();
 
+const menuOpen = ref(false);
+const closeMenu = () => { menuOpen.value = false; };
+
+// Modal Refs
+const repoManager = ref<any>(null);
+const devManager = ref<any>(null);
+const syncManager = ref<any>(null);
+const exportModal = ref<any>(null);
+
 // Sync Logic (Placeholder for now, will connect to Dashboard logic or make global)
 // Since sync logic was in Dashboard, we need a way to trigger it.
 // Ideally, the sync function should be global or checking status.
@@ -41,9 +50,20 @@ const handleGeneralSync = async () => {
     try {
         const response = await fetch(`${API_BASE_URL}/sync`, { method: 'POST' });
         if (response.ok) {
+            const data = await response.json();
+            const results = data.results || [];
+            const errors = results.filter((r: any) => r.status === 'error');
+            const skipped = results.filter((r: any) => r.status === 'skipped');
+            const synced = results.filter((r: any) => r.status !== 'error' && r.status !== 'skipped');
+
+            let description = `${synced.length} synced`;
+            if (skipped.length > 0) description += `, ${skipped.length} skipped (already up-to-date)`;
+            if (errors.length > 0) description += `, ${errors.length} failed`;
+
             toast({
-                title: "Sync Complete",
-                description: "Successfully updated team metrics.",
+                title: errors.length > 0 ? "Sync Completed with Errors" : "Sync Complete",
+                description,
+                variant: errors.length > 0 ? "destructive" : "default",
             });
             triggerRefresh();
         } else {
@@ -85,9 +105,10 @@ onMounted(() => {
 
     <!-- Right: Theme Toggle & Menu -->
     <div class="flex items-center gap-2">
+    
       <ThemeToggle class="rounded-full" />
 
-      <Sheet>
+      <Sheet v-model:open="menuOpen">
         <SheetTrigger as-child>
           <Button variant="ghost" size="icon" class="rounded-full">
             <Menu class="h-5 w-5" />
@@ -99,23 +120,35 @@ onMounted(() => {
           </SheetHeader>
           <div class="flex flex-col gap-2 mt-8">
              <!-- Navigation & Actions -->
-             <RepositoryManager />
-             <DeveloperManager />
-             <TargetedSync />
-             <Button @click="router.get(route('reports'))" variant="outline" class="w-full justify-start">
+             <Button variant="outline" class="w-full justify-start" @click="repoManager?.openDialog()">
+                 <Settings class="mr-2 h-4 w-4" />
+                 Repositories
+             </Button>
+             <Button variant="outline" class="w-full justify-start" @click="devManager?.openDialog()">
+                 <Users class="mr-2 h-4 w-4" />
+                 Developers
+             </Button>
+             <Button variant="outline" class="w-full justify-start" @click="syncManager?.openDialog()">
+                 <RefreshCw class="mr-2 h-4 w-4" />
+                 Targeted Sync
+             </Button>
+             <Button @click="closeMenu(); router.get(route('reports'))" variant="outline" class="w-full justify-start">
                  <FileText class="mr-2 h-4 w-4" />
                  Reports
              </Button>
              <Button
                 variant="outline"
                 class="w-full justify-start"
-                @click="handleGeneralSync"
+                @click="closeMenu(); handleGeneralSync()"
                 :disabled="isSyncing"
              >
                  <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': isSyncing }" />
                  {{ isSyncing ? 'Syncing...' : 'Sync Data' }}
              </Button>
-             <ExportModal :developers="developers" />
+             <Button variant="outline" class="w-full justify-start" @click="exportModal?.openModal()">
+                 <Download class="mr-2 h-4 w-4" />
+                 Export Report
+             </Button>
 
              <!-- Separator -->
              <div class="h-px bg-border my-2"></div>
@@ -126,6 +159,11 @@ onMounted(() => {
         </SheetContent>
       </Sheet>
     </div>
-
   </nav>
+
+  <!-- Modals (Outside nav to not interfere with flex layout) -->
+  <RepositoryManager ref="repoManager" :on-open="closeMenu" :hide-trigger="true" />
+  <DeveloperManager ref="devManager" :on-open="closeMenu" :hide-trigger="true" />
+  <TargetedSync ref="syncManager" :on-open="closeMenu" :hide-trigger="true" />
+  <ExportModal ref="exportModal" :developers="developers" :on-open="closeMenu" :hide-trigger="true" />
 </template>

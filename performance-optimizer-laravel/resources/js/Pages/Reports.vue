@@ -34,7 +34,7 @@ const reportData = ref<ReportData | null>(null);
 const developers = ref<any[]>([]);
 
 // Filters
-const dateFrom = ref(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Last 30 days
+const dateFrom = ref(new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Last 60 days
 const dateTo = ref(new Date().toISOString().split('T')[0]);
 const selectedDevIds = ref<number[]>([]);
 

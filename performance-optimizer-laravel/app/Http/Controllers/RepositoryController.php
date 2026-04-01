@@ -68,4 +68,29 @@ class RepositoryController extends Controller
         $repository->update(['status' => 'active']);
         return response()->json(['status' => 'activated', 'name' => $repository->name]);
     }
+
+    public function testConnection(Repository $repository, GitHubService $gitHubService)
+    {
+        if (!$repository->token) {
+            return response()->json([
+                'reachable' => false,
+                'message' => 'No token configured for this repository.',
+            ]);
+        }
+
+        $isValid = $gitHubService->validateRepoToken($repository->name, $repository->token);
+
+        $repository->update([
+            'last_checked' => now(),
+            'status' => $isValid ? 'active' : 'error',
+            'last_error' => $isValid ? null : 'Test failed: Repository not reachable or token invalid.',
+        ]);
+
+        return response()->json([
+            'reachable' => $isValid,
+            'message' => $isValid
+                ? "Successfully connected to {$repository->name}."
+                : "Failed to connect. Check repository name and token.",
+        ]);
+    }
 }
